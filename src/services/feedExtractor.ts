@@ -17,7 +17,7 @@ export interface RawFeedItem {
 }
 
 export interface RawFeed {
-    title: any;
+    title: string;
     items: RawFeedItem[];
 }
 
@@ -44,14 +44,14 @@ export async function fetchAndExtract(url: string): Promise<RawFeed> {
 
         if (result?.feed) {
             return {
-                title: result.feed.title,
+                title: extractRawTitle(result.feed.title),
                 items: extractAtomItems(result.feed),
             };
         }
 
         if (result?.rss?.channel) {
             return {
-                title: result.rss.channel.title,
+                title: extractRawTitle(result.rss.channel.title),
                 items: extractRssItems(result.rss.channel),
             };
         }
@@ -100,6 +100,13 @@ function extractRssItems(channel: any): RawFeedItem[] {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function extractRawTitle(raw: any): string {
+    if (!raw) return '';
+    if (typeof raw === 'string') return raw.trim();
+    if (raw?._) return String(raw._).trim();
+    return String(raw).trim();
+}
 
 function normalizeToArray(value: any): any[] {
     if (!value) return [];

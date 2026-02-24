@@ -17,7 +17,6 @@ export function renderGlobalTemplateTab(
     const list = infoBox.createEl('ul');
     list.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr; gap: 5px 20px; padding: 10px 0 0 20px; color: var(--text-muted); list-style: none;';
 
-    // Atualizado para bater exatamente com o templateEngine.ts
     const variables = [
         { tag: '{{title}}',     desc: 'Title' },
         { tag: '{{author}}',    desc: 'Author' },
@@ -28,6 +27,7 @@ export function renderGlobalTemplateTab(
         { tag: '{{snippet}}',   desc: 'Short Snippet' },
         { tag: '{{content}}',   desc: 'Full Body Content' },
         { tag: '{{#tags}}',     desc: 'Hashtags List' },
+        { tag: '{{feedname}}',  desc: 'Feed Name' },
     ];
 
     variables.forEach(v => {
@@ -43,39 +43,33 @@ export function renderGlobalTemplateTab(
         };
     });
 
-    // File Name Setting
+    // --- File Name Setting ---
     const fileNameSetting = new Setting(containerEl)
         .setName('File Name Template')
         .setDesc('How the .md file should be named.')
-        .addText(text => text
-            .setValue(plugin.settings.fileNameTemplate ?? '{{title}}')
-            .onChange(async v => {
-                plugin.settings.fileNameTemplate = v;
-                await plugin.saveSettings();
-            }));
+        .addText(text => {
+            text.inputEl.style.cssText = 'width: 100% !important; height: 40px;'; 
+            text.setValue(plugin.settings.fileNameTemplate ?? '{{title}}')
+                .onChange(async v => {
+                    plugin.settings.fileNameTemplate = v;
+                    await plugin.saveSettings();
+                });
+        });
+
+    fileNameSetting.settingEl.style.cssText = 'display: flex; flex-direction: column; align-items: stretch !important;';
+    fileNameSetting.infoEl.style.cssText = 'margin-bottom: 8px; width: 100% !important; max-width: 100% !important;';
+    
+    const fileNameTitle = fileNameSetting.settingEl.querySelector('.setting-item-name') as HTMLElement;
+    if (fileNameTitle) fileNameTitle.style.fontSize = '0.85em';
+
+    fileNameSetting.controlEl.style.cssText = 'width: 100% !important; display: block !important;';
     applyCardStyle(fileNameSetting);
 
     // Frontmatter Template (Properties)
-    addTextAreaSetting(
-        containerEl, 
-        plugin, 
-        applyCardStyle, 
-        autoResize, 
-        'Properties/Frontmatter', 
-        'YAML metadata. The engine will automatically remove quotes for clean checkboxes and links.', 
-        'frontmatterTemplate'
-    );
+    addTextAreaSetting(containerEl, plugin, applyCardStyle, autoResize, 'Properties/Frontmatter', 'frontmatterTemplate');
 
     // Body Template
-    addTextAreaSetting(
-        containerEl, 
-        plugin, 
-        applyCardStyle, 
-        autoResize, 
-        'Content Body', 
-        'The main structure of the note below the properties.', 
-        'template'
-    );
+    addTextAreaSetting(containerEl, plugin, applyCardStyle, autoResize, 'Content Body', 'template');
 }
 
 function addTextAreaSetting(
@@ -84,27 +78,29 @@ function addTextAreaSetting(
     applyCardStyle: (setting: Setting) => void,
     autoResize: (el: HTMLTextAreaElement) => void,
     name: string,
-    desc: string,
     key: 'frontmatterTemplate' | 'template'
 ): void {
     const textAreaSetting = new Setting(containerEl)
         .setName(name)
-        .setDesc(desc)
         .addTextArea(text => {
             const el = text.inputEl;
-            // Usamos casting para PluginSettings para evitar erros de tipagem com o 'key'
             text.setValue((plugin.settings as any)[key] ?? '')
                 .onChange(async (v) => {
                     (plugin.settings as any)[key] = v;
                     await plugin.saveSettings();
                     autoResize(el);
                 });
-            el.style.cssText = 'width: 100%; min-height: 120px; margin-top: 10px; font-family: var(--font-monospace); resize: vertical;';
-            // Trigger initial resize
+            // Adicionado "overflow: hidden" para remover a barra lateral
+            el.style.cssText = 'width: 100% !important; min-height: 150px; font-family: var(--font-monospace); resize: none; box-sizing: border-box !important; overflow: hidden !important;';
             setTimeout(() => autoResize(el), 0);
         });
+
+    textAreaSetting.settingEl.style.cssText = 'display: flex; flex-direction: column; align-items: stretch !important;';
+    textAreaSetting.infoEl.style.cssText = 'margin-bottom: 8px; width: 100% !important; max-width: 100% !important;';
     
-    // Alinha a descrição e o título para ocupar a linha toda, já que o textarea é largo
-    textAreaSetting.settingEl.style.display = 'block';
+    const textAreaTitle = textAreaSetting.settingEl.querySelector('.setting-item-name') as HTMLElement;
+    if (textAreaTitle) textAreaTitle.style.fontSize = '0.85em';
+
+    textAreaSetting.controlEl.style.cssText = 'width: 100% !important; display: block !important;';
     applyCardStyle(textAreaSetting);
 }

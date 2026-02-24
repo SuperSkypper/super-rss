@@ -1,7 +1,7 @@
 import { App, Vault, requestUrl } from 'obsidian';
 import { sanitizeFileName } from './feedProcessor';
 
-// ─── Folder helper (inline, no external dependency) ──────────────────────────
+// ─── Folder helper ────────────────────────────────────────────────────────────
 
 async function ensureFolder(vault: Vault, folderPath: string): Promise<void> {
     if (!folderPath || folderPath === '/' || folderPath === '') return;
@@ -19,7 +19,6 @@ async function ensureFolder(vault: Vault, folderPath: string): Promise<void> {
 
 // ─── Resolve attachment path ──────────────────────────────────────────────────
 
-// Reads Obsidian's native attachment folder settings and resolves the target path
 export function resolveObsidianAttachmentPath(app: App, currentFileFolderPath: string): string {
     const vaultConfig = (app.vault as any).getConfig?.bind(app.vault);
     if (!vaultConfig) return '';
@@ -36,38 +35,112 @@ export function resolveObsidianAttachmentPath(app: App, currentFileFolderPath: s
     return rawPath;
 }
 
+// ─── YouTube thumbnail upgrade ────────────────────────────────────────────────
+
+// Tries maxresdefault first (1280x720, no black bars), then sddefault, then keeps original.
+// YouTube returns a tiny 120x90 placeholder (< 5KB) for missing thumbnails with status 200,
+// so we validate by checking content-length.
+async function upgradeYoutubeThumbnail(url: string): Promise<string> {
+    if (!url.includes('img.youtube.com') && !url.includes('ytimg.com')) return url;
+
+    const maxres = url.replace(
+        /(hqdefault|mqdefault|sddefault|default|hq720|maxresdefault)(\.jpg)/i,
+        'maxresdefault$2'
+    );
+
+    if (maxres !== url) {
+        try {
+            const res = await requestUrl({ url: maxres, method: 'GET' });
+            const length = parseInt(res.headers?.['content-length'] ?? '99999', 10);
+            if (res.status === 200 && length > 5000) return maxres;
+        } catch { /* fall through */ }
+    }
+
+    // Try sddefault as middle ground (no black bars, reasonable resolution)
+    const sd = url.replace(
+        /(hqdefault|mqdefault|sddefault|default|hq720|maxresdefault)(\.jpg)/i,
+        'sddefault$2'
+    );
+
+    if (sd !== url) {
+        try {
+            const res = await requestUrl({ url: sd, method: 'GET' });
+            const length = parseInt(res.headers?.['content-length'] ?? '99999', 10);
+            if (res.status === 200 && length > 5000) return sd;
+        } catch { /* fall through */ }
+    }
+
+    return url;
+}
+
 // ─── Extract image URL from feed item ────────────────────────────────────────
 
-// Extracts the best image URL from a raw feed item, with OG/Twitter fallback
+// xml2js with stripPrefix transforms "media:group" → "group", "media:thumbnail" → "thumbnail"
+// so we check both the prefixed and unprefixed versions for safety.
+
+function getThumbnailFromMediaObj(media: any): string {
+    if (!media) return '';
+    const obj = Array.isArray(media) ? media[0] : media;
+    if (obj?.$?.url)  return String(obj.$.url);
+    if (typeof obj === 'string' && obj.startsWith('http')) return obj;
+    return '';
+}
+
 export async function extractImageUrl(item: any, itemUrl: string): Promise<string> {
     let url = '';
 
-    // 1. YouTube specific: media:group thumbnail
-    const mediaGroup = item?.['media:group'];
+    // 1. YouTube / media:group — xml2js strips prefix so key becomes "group"
+    const mediaGroup = item?.['media:group'] ?? item?.group;
     if (mediaGroup) {
-        const thumbnail = mediaGroup?.['media:thumbnail'];
-        const thumbObj = Array.isArray(thumbnail) ? thumbnail[0] : thumbnail;
-        if (thumbObj?.$?.url) url = String(thumbObj.$.url);
+        const thumbnail = mediaGroup?.['media:thumbnail'] ?? mediaGroup?.thumbnail;
+        url = getThumbnailFromMediaObj(thumbnail);
     }
 
-    // 2. Standard media tags (media:content, enclosure)
+    // 2. media:thumbnail at root level (with or without prefix)
     if (!url) {
-        const media = item?.['media:content'] ?? item?.['media:thumbnail'] ?? item?.enclosure;
+        const thumb = item?.['media:thumbnail'] ?? item?.thumbnail;
+        url = getThumbnailFromMediaObj(thumb);
+    }
+
+    // 3. media:content at root level — only if URL looks like an image
+    if (!url) {
+        const media = item?.['media:content'] ?? item?.content;
         if (media) {
-            const mediaObj = Array.isArray(media) ? media[0] : media;
-            url = String(mediaObj?.$?.url ?? (typeof mediaObj === 'string' ? mediaObj : '') ?? '');
+            const obj = Array.isArray(media) ? media[0] : media;
+            const candidate = obj?.$?.url ?? '';
+            if (candidate && /\.(jpg|jpeg|png|webp|gif|svg|avif)/i.test(candidate)) {
+                url = String(candidate);
+            }
         }
     }
 
-    // 3. Search inside HTML content
+    // 4. enclosure (common in podcast/blog feeds like RPCS3)
     if (!url) {
-        const content = item?.['content:encoded'] ?? item?.description ?? item?.content ?? '';
-        const contentStr = typeof content === 'string' ? content : '';
+        const enc = item?.enclosure;
+        if (enc) {
+            const obj = Array.isArray(enc) ? enc[0] : enc;
+            const type = obj?.$?.type ?? '';
+            const href = obj?.$?.url  ?? obj?.$?.href ?? '';
+            if (href && type.startsWith('image/')) url = String(href);
+        }
+    }
+
+    // 5. Search inside HTML content for first <img>
+    if (!url) {
+        const content =
+            item?.['content:encoded'] ??
+            item?.encoded ??
+            item?.description ??
+            item?.content ??
+            item?.summary ??
+            '';
+        const contentStr = typeof content === 'string' ? content
+            : (content?._ ? String(content._) : '');
         const match = /<img[^>]+(?:src|data-src|original-src)=["']([^"']+)["']/i.exec(contentStr);
         if (match?.[1]) url = String(match[1]);
     }
 
-    // 4. Fallback: OpenGraph / Twitter meta tags from original page
+    // 6. Fallback: OpenGraph / Twitter meta tags from original page
     if (!url && itemUrl?.startsWith('http')) {
         try {
             const response = await requestUrl({ url: itemUrl, method: 'GET' });
@@ -81,7 +154,7 @@ export async function extractImageUrl(item: any, itemUrl: string): Promise<strin
         } catch { /* Silent fail */ }
     }
 
-    // 5. Cleanup and path resolution
+    // 7. Cleanup and path resolution
     if (url) {
         url = url.replace(/&amp;/g, '&').replace(/&#038;/g, '&').trim();
         if (url.startsWith('//')) {
@@ -91,13 +164,16 @@ export async function extractImageUrl(item: any, itemUrl: string): Promise<strin
         }
     }
 
+    // 8. Upgrade YouTube thumbnail to highest available resolution
+    if (url && (url.includes('img.youtube.com') || url.includes('ytimg.com'))) {
+        url = await upgradeYoutubeThumbnail(url);
+    }
+
     return url;
 }
 
 // ─── Download image to vault ──────────────────────────────────────────────────
 
-// Downloads an image and saves it to the vault
-// Returns the wikilink format: [[path/to/image.png]]
 export async function downloadImageLocally(
     vault: Vault,
     url: string,
@@ -146,7 +222,9 @@ function resolveImageExtension(contentType: string, url: string): string {
     if (contentType.includes('image/webp')) return 'webp';
     if (contentType.includes('image/gif'))  return 'gif';
     if (contentType.includes('image/svg'))  return 'svg';
+    if (contentType.includes('image/png'))  return 'png';
+    if (contentType.includes('image/avif')) return 'avif';
 
-    const match = url.match(/\.(jpg|jpeg|png|webp|gif|svg)($|\?)/i);
+    const match = url.match(/\.(jpg|jpeg|png|webp|gif|svg|avif)($|\?)/i);
     return match?.[1]?.toLowerCase() ?? 'png';
 }
