@@ -1,11 +1,11 @@
 {
-	"id": "sample-plugin",
-	"name": "Sample Plugin",
-	"version": "1.0.0",
-	"minAppVersion": "0.15.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
+	"id": "super-rss",
+	"name": "Super RSS",
+	"version": "0.001",
+	"minAppVersion": "0.001",
+	"description": "Just a simple RSS Plugin for Obsidian.",
+	"author": "@SuperSkypper",
+	"authorUrl": "https://x.com/SuperSkypper",
+	"fundingUrl": "https://ko-fi.com/superskypper",
 	"isDesktopOnly": false
 }
