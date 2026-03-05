@@ -1,26 +1,63 @@
 import { FeedItem } from '../main';
 import { RawFeedItem } from './feedExtractor';
-import { extractImageUrl } from './imageHandler';
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-export async function processItem(raw: RawFeedItem): Promise<FeedItem> {
+export function processItem(raw: RawFeedItem): FeedItem {
     const link = processLink(raw.link);
+
     return {
         title:            processTitle(raw.title),
         link,
-        content:          processContent(raw.content),
+        content:          processContent(raw.content, link),
         description:      processDescription(raw.description),
         descriptionShort: processDescriptionShort(raw.description),
         author:           processAuthor(raw.author),
         pubDate:          processPubDate(raw.pubDate),
-        imageUrl:         await extractImageUrl(raw._raw, link),
+        imageUrl:         raw.imageUrl || '',
         categories:       processCategories(raw.categories),
+        duration:         raw.duration,
     };
 }
 
-export async function processItems(raws: RawFeedItem[]): Promise<FeedItem[]> {
-    return Promise.all(raws.map(processItem));
+/**
+ * Processes and deduplicates feed items before returning them.
+ * Deduplication is done on the raw level (by normalized link) to avoid
+ * fetching/processing items that will be discarded anyway.
+ */
+export function processItems(raws: RawFeedItem[]): FeedItem[] {
+    const uniqueRaws = deduplicateRaws(raws);
+    return uniqueRaws.map(raw => processItem(raw));
+}
+
+// ─── Deduplication ────────────────────────────────────────────────────────────
+
+/**
+ * Filters out duplicate raw items before processing.
+ * Keyed by the raw link string — consistent with the key used in articleStateDb
+ * in feedSaver.ts (item.link). Keeps the first occurrence.
+ */
+function deduplicateRaws(raws: RawFeedItem[]): RawFeedItem[] {
+    const seen = new Set<string>();
+    const unique: RawFeedItem[] = [];
+
+    for (const raw of raws) {
+        const key = processLink(raw.link);
+
+        if (!key) {
+            unique.push(raw);
+            continue;
+        }
+
+        if (seen.has(key)) {
+            continue;
+        }
+
+        seen.add(key);
+        unique.push(raw);
+    }
+
+    return unique;
 }
 
 // ─── Title ────────────────────────────────────────────────────────────────────
@@ -35,15 +72,17 @@ export function decodeHtmlEntities(text: string): string {
         .replace(/&quot;/g, '"')
         .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
         .replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCharCode(parseInt(code, 16)))
-        .replace(/&apos;/g, "'");
+        .replace(/&apos;/g, "'")
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&[a-z]+;/gi, '');
 }
 
 export function sanitizeFileName(name: string): string {
     return decodeHtmlEntities(name)
-        .replace(INVALID_FILENAME_CHARS, ' - ') // replace invalid chars with spaced dash
-        .replace(/\s+/g, ' ')                   // collapse multiple spaces
-        .replace(/^[\s-]+|[\s-]+$/g, '')        // trim spaces and dashes from edges
-        .substring(0, 200);                     // limit length
+        .replace(INVALID_FILENAME_CHARS, ' - ')
+        .replace(/\s+/g, ' ')
+        .replace(/^[\s-]+|[\s-]+$/g, '')
+        .substring(0, 200);
 }
 
 function processTitle(raw: any): string {
@@ -65,29 +104,56 @@ function processLink(raw: any): string {
     return String(raw).trim();
 }
 
+// ─── HTML cleaning ────────────────────────────────────────────────────────────
+
+/**
+ * Strips HTML down to readable plain text:
+ *   1. Remove HTML comments (e.g. Reddit's <!-- SC_OFF --> blocks)
+ *   2. Replace block-level tags with newlines so paragraphs are preserved
+ *   3. Strip all remaining tags
+ *   4. Decode HTML entities
+ *   5. Collapse excess whitespace
+ */
+function cleanHtml(html: string): string {
+    return decodeHtmlEntities(
+        html
+            .replace(/<!--[\s\S]*?-->/g, '')
+            .replace(/<\/?(p|br|div|blockquote|li|h[1-6]|tr)[^>]*>/gi, '\n')
+            .replace(/<[^>]+>/g, '')
+    )
+        .replace(/\n{3,}/g, '\n\n')
+        .replace(/[ \t]+/g, ' ')
+        .trim();
+}
+
 // ─── Content ──────────────────────────────────────────────────────────────────
 
-function processContent(raw: any): string {
+function youtubeEmbed(link: string): string | null {
+    const match = link.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/);
+    return match ? `![](https://www.youtube.com/watch?v=${match[1]})` : null;
+}
+
+function processContent(raw: any, link = ''): string {
+    const embed = link ? youtubeEmbed(link) : null;
+    if (embed) return embed;
     if (!raw) return '';
-    if (typeof raw === 'string') return raw;
-    if (raw?._) return String(raw._);
-    return String(raw);
+    const text = typeof raw === 'string' ? raw : (raw?._ ?? String(raw));
+    return cleanHtml(text);
 }
 
 // ─── Description ─────────────────────────────────────────────────────────────
 
 function processDescription(raw: any): string {
     if (!raw) return '';
-    if (typeof raw === 'string') return raw;
-    if (raw?._) return String(raw._);
-    return String(raw);
+    const text = typeof raw === 'string' ? raw : (raw?._ ?? String(raw));
+    return cleanHtml(text);
 }
 
 function processDescriptionShort(raw: any): string {
     const full = processDescription(raw);
     if (!full) return '';
-    const stripped = full.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
-    return stripped.length > 280 ? stripped.slice(0, 277) + '...' : stripped;
+    const oneLine = full.replace(/\n+/g, ' ').trim();
+    return oneLine.length > 280 ? oneLine.slice(0, 277) + '...' : oneLine;
 }
 
 // ─── Author ───────────────────────────────────────────────────────────────────

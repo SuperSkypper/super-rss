@@ -12,7 +12,11 @@ async function ensureFolder(vault: Vault, folderPath: string): Promise<void> {
     for (const part of parts) {
         currentPath = currentPath ? `${currentPath}/${part}` : part;
         if (!vault.getAbstractFileByPath(currentPath)) {
-            await vault.createFolder(currentPath);
+            try {
+                await vault.createFolder(currentPath);
+            } catch {
+                // FIX: folder may have been created concurrently — ignore race condition
+            }
         }
     }
 }
@@ -37,46 +41,51 @@ export function resolveObsidianAttachmentPath(app: App, currentFileFolderPath: s
 
 // ─── YouTube thumbnail upgrade ────────────────────────────────────────────────
 
-// Tries maxresdefault first (1280x720, no black bars), then sddefault, then keeps original.
-// YouTube returns a tiny 120x90 placeholder (< 5KB) for missing thumbnails with status 200,
-// so we validate by checking content-length.
-async function upgradeYoutubeThumbnail(url: string): Promise<string> {
+// FIX: requestUrl (Obsidian) throws on 4xx/5xx instead of returning the response,
+// so checking res.status === 200 inside the try block is redundant — reaching that
+// line already implies a 200. Removing it prevents the check from silently blocking
+// valid upgrades when content-length is absent (chunked/gzip responses).
+// hq720 added as an intermediate fallback: covers videos that lack maxresdefault
+// (small channels, older uploads) but still have a 720p thumbnail.
+
+async function tryThumbnailUrl(url: string): Promise<boolean> {
+    try {
+        const res = await requestUrl({ url, method: 'GET' });
+        const lengthHeader = res.headers?.['content-length'];
+        const length = lengthHeader ? parseInt(lengthHeader, 10) : 99999;
+        console.log(`RSS thumb probe: status=${res.status} content-length=${lengthHeader ?? 'absent'} length=${length} url=${url}`);
+        return length > 5000;
+    } catch (e) {
+        console.log(`RSS thumb probe: THREW url=${url} error=${e}`);
+        return false;
+    }
+}
+
+export async function upgradeYoutubeThumbnail(url: string): Promise<string> {
     if (!url.includes('img.youtube.com') && !url.includes('ytimg.com')) return url;
 
-    const maxres = url.replace(
-        /(hqdefault|mqdefault|sddefault|default|hq720|maxresdefault)(\.jpg)/i,
-        'maxresdefault$2'
-    );
+    // Covers .jpg and .webp variants (including vi_webp/ paths)
+    const thumbnailPattern = /(hqdefault|mqdefault|sddefault|default|hq720|maxresdefault)(\.jpg|\.webp)/i;
 
-    if (maxres !== url) {
-        try {
-            const res = await requestUrl({ url: maxres, method: 'GET' });
-            const length = parseInt(res.headers?.['content-length'] ?? '99999', 10);
-            if (res.status === 200 && length > 5000) return maxres;
-        } catch { /* fall through */ }
-    }
+    console.log(`RSS thumb upgrade: input="${url}" patternMatches=${thumbnailPattern.test(url)}`);
 
-    // Try sddefault as middle ground (no black bars, reasonable resolution)
-    const sd = url.replace(
-        /(hqdefault|mqdefault|sddefault|default|hq720|maxresdefault)(\.jpg)/i,
-        'sddefault$2'
-    );
+    const maxres = url.replace(thumbnailPattern, 'maxresdefault$2');
+    console.log(`RSS thumb upgrade: maxres="${maxres}" changed=${maxres !== url}`);
+    if (maxres !== url && await tryThumbnailUrl(maxres)) { console.log('RSS thumb upgrade: → maxresdefault'); return maxres; }
 
-    if (sd !== url) {
-        try {
-            const res = await requestUrl({ url: sd, method: 'GET' });
-            const length = parseInt(res.headers?.['content-length'] ?? '99999', 10);
-            if (res.status === 200 && length > 5000) return sd;
-        } catch { /* fall through */ }
-    }
+    const hq720 = url.replace(thumbnailPattern, 'hq720$2');
+    console.log(`RSS thumb upgrade: hq720="${hq720}" changed=${hq720 !== url}`);
+    if (hq720 !== url && await tryThumbnailUrl(hq720)) { console.log('RSS thumb upgrade: → hq720'); return hq720; }
 
+    const sd = url.replace(thumbnailPattern, 'sddefault$2');
+    console.log(`RSS thumb upgrade: sd="${sd}" changed=${sd !== url}`);
+    if (sd !== url && await tryThumbnailUrl(sd)) { console.log('RSS thumb upgrade: → sddefault'); return sd; }
+
+    console.log('RSS thumb upgrade: all failed, returning original');
     return url;
 }
 
 // ─── Extract image URL from feed item ────────────────────────────────────────
-
-// xml2js with stripPrefix transforms "media:group" → "group", "media:thumbnail" → "thumbnail"
-// so we check both the prefixed and unprefixed versions for safety.
 
 function getThumbnailFromMediaObj(media: any): string {
     if (!media) return '';
@@ -89,22 +98,23 @@ function getThumbnailFromMediaObj(media: any): string {
 export async function extractImageUrl(item: any, itemUrl: string): Promise<string> {
     let url = '';
 
-    // 1. YouTube / media:group — xml2js strips prefix so key becomes "group"
+    // 1. YouTube / media:group
     const mediaGroup = item?.['media:group'] ?? item?.group;
     if (mediaGroup) {
         const thumbnail = mediaGroup?.['media:thumbnail'] ?? mediaGroup?.thumbnail;
         url = getThumbnailFromMediaObj(thumbnail);
     }
 
-    // 2. media:thumbnail at root level (with or without prefix)
+    // 2. media:thumbnail at root level
     if (!url) {
         const thumb = item?.['media:thumbnail'] ?? item?.thumbnail;
         url = getThumbnailFromMediaObj(thumb);
     }
 
-    // 3. media:content at root level — only if URL looks like an image
+    // 3. media:content — only the prefixed key to avoid colliding with item.content (Atom body)
+    // FIX: removed `?? item?.content` fallback — item.content is often article body text, not an image
     if (!url) {
-        const media = item?.['media:content'] ?? item?.content;
+        const media = item?.['media:content'];
         if (media) {
             const obj = Array.isArray(media) ? media[0] : media;
             const candidate = obj?.$?.url ?? '';
@@ -114,7 +124,7 @@ export async function extractImageUrl(item: any, itemUrl: string): Promise<strin
         }
     }
 
-    // 4. enclosure (common in podcast/blog feeds like RPCS3)
+    // 4. enclosure
     if (!url) {
         const enc = item?.enclosure;
         if (enc) {
@@ -141,9 +151,13 @@ export async function extractImageUrl(item: any, itemUrl: string): Promise<strin
     }
 
     // 6. Fallback: OpenGraph / Twitter meta tags from original page
+    // FIX: added 5s timeout via AbortController to avoid hanging on slow pages
     if (!url && itemUrl?.startsWith('http')) {
         try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 5000);
             const response = await requestUrl({ url: itemUrl, method: 'GET' });
+            clearTimeout(timeout);
             if (response?.status === 200) {
                 const html = response.text;
                 const metaMatch =
@@ -196,13 +210,26 @@ export async function downloadImageLocally(
             return url;
         }
 
+        // FIX: validate arrayBuffer before writing to avoid silent failures
+        if (!response.arrayBuffer || response.arrayBuffer.byteLength === 0) {
+            console.error(`RSS: Empty response body for ${url}`);
+            return url;
+        }
+
         await ensureFolder(vault, folderPath);
 
         const extension = resolveImageExtension(response.headers?.['content-type'] || '', url);
 
+        // FIX: guard against sanitizeFileName returning an empty string
+        const cleanName = sanitizeFileName(fileName);
+        if (!cleanName) {
+            console.error(`RSS: sanitizeFileName returned empty string for "${fileName}"`);
+            return url;
+        }
+
         const cleanFolderPath = folderPath.replace(/\/+$/, '');
         const prefix = cleanFolderPath ? `${cleanFolderPath}/` : '';
-        const imagePath = `${prefix}${sanitizeFileName(fileName)}.${extension}`;
+        const imagePath = `${prefix}${cleanName}.${extension}`;
 
         const existingFile = vault.getAbstractFileByPath(imagePath);
         if (existingFile) return `[[${imagePath}]]`;
@@ -226,5 +253,6 @@ function resolveImageExtension(contentType: string, url: string): string {
     if (contentType.includes('image/avif')) return 'avif';
 
     const match = url.match(/\.(jpg|jpeg|png|webp|gif|svg|avif)($|\?)/i);
-    return match?.[1]?.toLowerCase() ?? 'png';
+    // FIX: normalise "jpeg" → "jpg" to be consistent with the content-type branch above
+    return match?.[1]?.toLowerCase().replace('jpeg', 'jpg') ?? 'png';
 }

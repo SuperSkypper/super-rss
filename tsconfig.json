@@ -25,6 +25,9 @@
         ]
     },
     "include": [
-        "src/main.ts"
+        "**/*.ts"
+    ],
+    "exclude": [
+        "node_modules"
     ]
 }
