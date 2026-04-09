@@ -33,6 +33,160 @@ const SEPARATOR_CSS = 'width: 1px; height: 18px; background: var(--background-mo
 // ─── Sort helpers ─────────────────────────────────────────────────────────────
 const COLLATOR = new Intl.Collator(undefined, { sensitivity: 'base' });
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function debounce<T extends (...args: any[]) => void>(fn: T, ms: number): T {
+    let timer: ReturnType<typeof setTimeout>;
+    return ((...args: any[]) => {
+        clearTimeout(timer);
+        timer = setTimeout(() => fn(...args), ms);
+    }) as T;
+}
+
+// ─── Virtual scroll ───────────────────────────────────────────────────────────
+//
+// Renders only the cards visible in the scroll viewport plus a small overscan
+// buffer above and below. With 400 feeds at ~68px each, the full list would be
+// ~27,200px tall and require ~6,000 DOM nodes. Virtual scroll keeps that down
+// to ~20-25 nodes at any time, eliminating the RAM spike on tab open.
+//
+// Architecture:
+//   scrollEl  — the scrollable container (fixed height, overflow-y: auto)
+//   spacerTop — invisible div whose height = rows above the visible window
+//   itemsEl   — contains only the currently rendered cards
+//   spacerBot — invisible div whose height = rows below the visible window
+//
+// On every scroll event, we recalculate which indices are visible and
+// add/remove cards as needed. Cards are keyed by feed URL to allow reuse.
+
+const CARD_HEIGHT = 68;   // px — measured from the actual rendered card
+const OVERSCAN    = 5;    // extra cards to render above and below viewport
+
+interface VirtualList {
+    /** Call when the dataset or filters change — rebuilds from scratch */
+    setItems: (items: FeedConfig[]) => void;
+    /** Call when a single card's visual state may have changed (e.g. toggle) */
+    invalidate: () => void;
+    /** Disconnect observers and clean up */
+    destroy: () => void;
+}
+
+function createVirtualList(
+    container:    HTMLElement,
+    renderCard:   (feed: FeedConfig, el: HTMLElement) => void,
+    getGroups:    () => ReturnType<typeof sortGroups>,
+): VirtualList {
+    // ── DOM structure ─────────────────────────────────────────────────────────
+    const scrollEl = container.createDiv();
+    scrollEl.style.cssText = `
+        height: 520px;
+        overflow-y: auto;
+        position: relative;
+    `;
+
+    const innerEl = scrollEl.createDiv();
+    innerEl.style.cssText = 'position: relative;';
+
+    const spacerTop = innerEl.createDiv();
+    spacerTop.style.cssText = 'position: absolute; top: 0; left: 0; right: 0; pointer-events: none;';
+
+    const itemsEl = innerEl.createDiv();
+    itemsEl.style.cssText = 'position: absolute; left: 0; right: 0;';
+
+    const spacerBot = innerEl.createDiv();
+    spacerBot.style.cssText = 'position: absolute; left: 0; right: 0; pointer-events: none;';
+
+    // ── State ─────────────────────────────────────────────────────────────────
+    let items:        FeedConfig[] = [];
+    let renderedStart = -1;
+    let renderedEnd   = -1;
+
+    // ── Layout ────────────────────────────────────────────────────────────────
+    // No card cache — cards are created on entry and destroyed on exit.
+    // Caching kept all 400 elements in memory as you scrolled; without it,
+    // only OVERSCAN*2 + viewport cards (~20) ever exist at once.
+    const updateLayout = () => {
+        const totalHeight = items.length * CARD_HEIGHT;
+        innerEl.style.height = totalHeight + 'px';
+
+        const scrollTop    = scrollEl.scrollTop;
+        const viewHeight   = scrollEl.clientHeight || 520;
+        const firstVisible = Math.floor(scrollTop / CARD_HEIGHT);
+        const lastVisible  = Math.ceil((scrollTop + viewHeight) / CARD_HEIGHT);
+
+        const newStart = Math.max(0, firstVisible - OVERSCAN);
+        const newEnd   = Math.min(items.length, lastVisible + OVERSCAN);
+
+        // Nothing changed — skip work
+        if (newStart === renderedStart && newEnd === renderedEnd) return;
+
+        // Remove all currently rendered cards and re-render only the new window.
+        // This is simpler and cheaper than diffing — the window is small (~20 items)
+        // so the cost of re-creating a few cards on each scroll event is negligible
+        // compared to keeping 400 cached elements in memory.
+        itemsEl.innerHTML = '';
+
+        for (let i = newStart; i < newEnd; i++) {
+            const feed = items[i];
+            if (!feed) continue;
+
+            const el = document.createElement('div');
+            el.style.cssText = `position:absolute;top:${i * CARD_HEIGHT}px;left:0;right:0;`;
+            renderCard(feed, el);
+            itemsEl.appendChild(el);
+        }
+
+        renderedStart = newStart;
+        renderedEnd   = newEnd;
+
+        spacerTop.style.height = (newStart * CARD_HEIGHT) + 'px';
+        spacerBot.style.top    = (newEnd * CARD_HEIGHT) + 'px';
+        spacerBot.style.height = Math.max(0, (items.length - newEnd) * CARD_HEIGHT) + 'px';
+    };
+
+    // ── Throttled scroll handler ──────────────────────────────────────────────
+    // rAF-throttle prevents layout thrashing when the user scrolls fast —
+    // at most one updateLayout() per animation frame regardless of scroll speed.
+    let rafPending = false;
+    const onScroll = () => {
+        if (rafPending) return;
+        rafPending = true;
+        requestAnimationFrame(() => {
+            rafPending = false;
+            updateLayout();
+        });
+    };
+    scrollEl.addEventListener('scroll', onScroll, { passive: true });
+
+    const ro = new ResizeObserver(() => { updateLayout(); });
+    ro.observe(scrollEl);
+
+    // ── Public API ────────────────────────────────────────────────────────────
+    const setItems = (newItems: FeedConfig[]) => {
+        itemsEl.innerHTML = '';
+        renderedStart = -1;
+        renderedEnd   = -1;
+        scrollEl.scrollTop = 0;
+        items = newItems;
+        updateLayout();
+    };
+
+    const invalidate = () => {
+        // Force re-render of the current window (e.g. after a toggle changes state)
+        renderedStart = -1;
+        renderedEnd   = -1;
+        itemsEl.innerHTML = '';
+        updateLayout();
+    };
+
+    const destroy = () => {
+        scrollEl.removeEventListener('scroll', onScroll);
+        ro.disconnect();
+    };
+
+    return { setItems, invalidate, destroy };
+}
+
 function sortFeeds(feeds: FeedConfig[]): FeedConfig[] {
     return [...feeds].sort((a, b) => COLLATOR.compare(a.name || '', b.name || ''));
 }
@@ -112,44 +266,41 @@ export function renderMyFeedsTab(
         if (plugin.settings.feeds.length !== before) plugin.saveSettings();
     }
 
-    // ── Rebuild the entire tab content (cards) ────────────────────────────────
-    const rebuildList = () => {
-        listEl.empty();
+    // ── Virtual list ──────────────────────────────────────────────────────────
+    let emptyEl: HTMLElement | null = null;
 
-        const visible = getVisibleFeeds();
-
-        if (visible.length === 0) {
-            const empty = listEl.createEl('p', { text: 'No feeds in this category.' });
-            empty.style.cssText = 'color: var(--text-muted); text-align: center; margin-top: 24px;';
-            return;
-        }
-
-        const sortedGroups = sortGroups(plugin.settings.groups);
-
-        const selectEls: HTMLSelectElement[] = [];
-        const updateSelectVisibility = () => {
-            const narrow = listEl.offsetWidth < 500;
-            selectEls.forEach(s => { s.style.display = narrow ? 'none' : ''; });
-        };
-        const listRo = new ResizeObserver(updateSelectVisibility);
-        listRo.observe(listEl);
-        const listRoCleanup = new MutationObserver(() => { listRo.disconnect(); listRoCleanup.disconnect(); });
-        listRoCleanup.observe(listEl, { childList: true });
-
-        sortFeeds(visible).forEach(feed => {
-            const globalIndex = plugin.settings.feeds.indexOf(feed);
+    const vlist = createVirtualList(
+        listEl,
+        (feed, el) => {
+            const sortedGroups = sortGroups(plugin.settings.groups);
+            const globalIndex  = plugin.settings.feeds.indexOf(feed);
             const st = (feed.deleted ?? false) ? 'deleted' : (feed.archived ?? false) ? 'archived' : 'normal';
             renderFeedCard(
-                app, plugin, listEl, plugin.settings.feeds, feed, globalIndex,
+                app, plugin, el, plugin.settings.feeds, feed, globalIndex,
                 sortedGroups, selectedFeeds,
                 () => { selectedFeeds.clear(); fullRefresh(); },
                 () => { renderControlsCard(); },
                 st,
-                selectEls
             );
-        });
+        },
+        () => sortGroups(plugin.settings.groups),
+    );
 
-        updateSelectVisibility();
+    // ── Rebuild the list when filters / search change ─────────────────────────
+    const rebuildList = () => {
+        // Remove empty-state message if present
+        if (emptyEl) { emptyEl.remove(); emptyEl = null; }
+
+        const visible = sortFeeds(getVisibleFeeds());
+
+        if (visible.length === 0) {
+            vlist.setItems([]);
+            emptyEl = listEl.createEl('p', { text: 'No feeds in this category.' });
+            emptyEl.style.cssText = 'color: var(--text-muted); text-align: center; margin-top: 24px;';
+            return;
+        }
+
+        vlist.setItems(visible);
     };
 
     const fullRefresh = () => {
@@ -265,13 +416,6 @@ export function renderMyFeedsTab(
                             fullRefresh();
                             new Notice(`Permanently deleted ${count} feed${count !== 1 ? 's' : ''}`);
                         },
-                        async () => {
-                            plugin.settings.feeds = plugin.settings.feeds.filter((f: FeedConfig) => !selectedFeeds.has(f.url));
-                            selectedFeeds.clear();
-                            await plugin.saveSettings();
-                            fullRefresh();
-                            new Notice(`Permanently deleted ${count} feed${count !== 1 ? 's' : ''}`);
-                        }
                     ).open();
                 });
 
@@ -470,10 +614,14 @@ export function renderMyFeedsTab(
     searchWrap.addEventListener('focusout', () => {
         searchWrap.style.borderColor = searchQuery ? 'var(--interactive-accent)' : 'var(--background-modifier-border)';
     });
-    searchInput.addEventListener('input', () => {
-        searchQuery = searchInput.value;
+    const debouncedSearch = debounce(() => {
         selectedFeeds.clear();
         fullRefresh();
+    }, 150);
+
+    searchInput.addEventListener('input', () => {
+        searchQuery = searchInput.value;
+        debouncedSearch();
     });
 
     containerEl.appendChild(listEl);
@@ -530,7 +678,6 @@ function renderFeedCard(
     onRefresh: () => void,
     onSelectionChange: () => void,
     status: 'normal' | 'archived' | 'deleted' = 'normal',
-    selectEls?: HTMLSelectElement[]
 ): void {
     const isArchived = status === 'archived';
     const isDeleted  = status === 'deleted';
@@ -736,7 +883,7 @@ function renderFeedCard(
             setTimeout(() => document.addEventListener('click', close), 0);
         });
 
-        selectEls?.push(badge as any);
+        // (selectEls removed — handled by virtual scroll container width)
     }
 
     if (!isDeleted && groups.length > 0) {
@@ -823,11 +970,6 @@ function renderFeedCard(
         btn.addEventListener('click', async () => {
             const ConfirmDeleteModal = await getConfirmDeleteModal();
             new ConfirmDeleteModal(app,
-                async () => {
-                    const liveIdx = plugin.settings.feeds.indexOf(feed);
-                    if (liveIdx !== -1) plugin.settings.feeds.splice(liveIdx, 1);
-                    await plugin.saveSettings(); onRefresh();
-                },
                 async () => {
                     const liveIdx = plugin.settings.feeds.indexOf(feed);
                     if (liveIdx !== -1) plugin.settings.feeds.splice(liveIdx, 1);

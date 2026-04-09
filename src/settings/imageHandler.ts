@@ -150,14 +150,18 @@ export async function extractImageUrl(item: any, itemUrl: string): Promise<strin
         if (match?.[1]) url = String(match[1]);
     }
 
-    // 6. Fallback: OpenGraph / Twitter meta tags from original page
-    // FIX: added 5s timeout via AbortController to avoid hanging on slow pages
+    // 6. Fallback: OpenGraph / Twitter meta tags from original page.
+    // requestUrl (Obsidian API) does not support a timeout parameter, so we race
+    // the request against a manual 5-second rejection to avoid hanging on slow pages.
     if (!url && itemUrl?.startsWith('http')) {
         try {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 5000);
-            const response = await requestUrl({ url: itemUrl, method: 'GET' });
-            clearTimeout(timeout);
+            const timeoutPromise = new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error('timeout')), 5000)
+            );
+            const response = await Promise.race([
+                requestUrl({ url: itemUrl, method: 'GET' }),
+                timeoutPromise,
+            ]);
             if (response?.status === 200) {
                 const html = response.text;
                 const metaMatch =
@@ -165,7 +169,7 @@ export async function extractImageUrl(item: any, itemUrl: string): Promise<strin
                     /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:og:image|twitter:image)["']/i.exec(html);
                 if (metaMatch?.[1]) url = metaMatch[1];
             }
-        } catch { /* Silent fail */ }
+        } catch { /* Silent fail — includes timeout */ }
     }
 
     // 7. Cleanup and path resolution

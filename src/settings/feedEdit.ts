@@ -3,6 +3,7 @@ import RssPlugin, { FeedConfig, FeedGroup, resolveFeedPath } from '../main';
 import { renderVariableReference } from './settingsTemplate';
 import { openEditFoldersModal, promptFolderName } from './editFolders';
 
+
 // ─── Device detection ─────────────────────────────────────────────────────────
 
 let _isTouchDevice: boolean | undefined;
@@ -143,7 +144,19 @@ export class FeedEditModal extends Modal {
         urlInput.oninput   = (e) => { this.feed.url = (e.target as HTMLInputElement).value; };
         urlInput.onkeydown = (e) => {
             this.feed.url = urlInput.value;
-            if (e.key === 'Enter') { this.onSave(); this.close(); }
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                // Mirror the Save button: await onSave() before closing so the
+                // modal does not dismiss before settings are persisted.
+                void (async () => {
+                    try {
+                        await this.onSave();
+                        this._saved = true;
+                    } finally {
+                        this.close();
+                    }
+                })();
+            }
         };
 
         const getGroups = () => [...this.plugin.settings.groups].sort((a, b) =>
@@ -410,6 +423,11 @@ export class FeedEditModal extends Modal {
         // @ts-ignore — internal Obsidian config property
         const useSystem: boolean = (this.app.vault as any).getConfig?.('trashOption') !== 'local';
 
+        // Files are trashed without updating the DB — on the next update, saveFeedItem
+        // will detect that the file no longer exists (vault.adapter.exists check) and
+        // re-import it. This is intentional: "Move to Trash" is a feed removal action,
+        // not a per-article action, so re-import prevention is handled at the feed level
+        // (feed.deleted = true, feed.enabled = false set by the caller).
         let movedCount = 0;
         for (const file of files) {
             try {
@@ -636,65 +654,12 @@ export class FeedEditModal extends Modal {
     }
 }
 
-// ─── AddUrlModal ──────────────────────────────────────────────────────────────
-
-export class AddUrlModal extends Modal {
-    private onSubmitUrl: (url: string) => Promise<void>;
-
-    constructor(app: App, onSubmitUrl: (url: string) => Promise<void>) {
-        super(app);
-        this.onSubmitUrl = onSubmitUrl;
-    }
-
-    onOpen() {
-        const { contentEl } = this;
-        contentEl.empty();
-        contentEl.createEl('h2', { text: 'Add Feed' });
-
-        const input = contentEl.createEl('input', { type: 'text' });
-        input.placeholder   = 'https://example.com/feed.xml';
-        input.style.cssText = `width: 100%; box-sizing: border-box; margin: 12px 0; font-size: ${inputFontSize()};`;
-        input.inputMode      = 'url';
-        input.autocomplete   = 'off';
-        input.autocapitalize = 'off';
-
-        const footer = contentEl.createDiv();
-        footer.style.cssText = 'display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px;';
-
-        const cancelBtn = footer.createEl('button', { text: 'Cancel' });
-        cancelBtn.onclick = () => this.close();
-
-        const addBtn = footer.createEl('button', { text: 'Add Feed', cls: 'mod-cta' });
-
-        const submit = async () => {
-            const url = input.value.trim();
-            if (!url) { new Notice('Please enter a feed URL.'); return; }
-            addBtn.disabled    = true;
-            cancelBtn.disabled = true;
-            try {
-                await this.onSubmitUrl(url);
-            } finally {
-                addBtn.disabled    = false;
-                cancelBtn.disabled = false;
-            }
-            this.close();
-        };
-
-        addBtn.onclick  = submit;
-        input.onkeydown = (e) => { if (e.key === 'Enter') submit(); };
-
-        setTimeout(() => input.focus(), 50);
-    }
-
-    onClose() { this.contentEl.empty(); }
-}
-
 // ─── ConfirmDeleteModal ───────────────────────────────────────────────────────
 
 export class ConfirmDeleteModal extends Modal {
     private onConfirm: () => Promise<void>;
 
-    constructor(app: App, onConfirm: () => Promise<void>, _unused?: () => Promise<void>) {
+    constructor(app: App, onConfirm: () => Promise<void>) {
         super(app);
         this.onConfirm = onConfirm;
     }

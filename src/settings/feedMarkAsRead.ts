@@ -15,8 +15,14 @@ export const MARK_AS_READ_PROTOCOL = 'rss-mark-as-read';
  * obsidian:// URIs. The handler finds the file by basename search.
  *
  * The link property and the checkbox property are separate:
- *   - markAsReadLinkProperty    → holds this link (static, never changes)
+ *   - markAsReadLinkProperty     → holds this link (static, never changes)
  *   - markAsReadCheckboxProperty → toggled true/false on each click
+ *
+ * URI encoding note:
+ *   Obsidian automatically decodes URI parameters before passing them
+ *   to the protocol handler. Standard encodeURIComponent() is sufficient —
+ *   no double-encoding needed. The handler uses params['file'] directly
+ *   (already decoded) to find the file by basename.
  */
 export function buildMarkAsReadLink(filePath: string, settings: PluginSettings): string {
     if (!settings.markAsReadEnabled) return '';
@@ -24,7 +30,9 @@ export function buildMarkAsReadLink(filePath: string, settings: PluginSettings):
     const checkboxProp = settings.markAsReadCheckboxProperty?.trim() || 'Checkbox';
 
     // Extract basename without extension — e.g. "RSS/Feed/My Article.md" → "My Article"
-    const basename    = filePath.split('/').pop()?.replace(/\.md$/i, '') ?? filePath;
+    const basename = filePath.split('/').pop()?.replace(/\.md$/i, '') ?? filePath;
+
+    // Standard encoding — Obsidian will decode this automatically
     const encodedName = encodeURIComponent(basename);
     const encodedProp = encodeURIComponent(checkboxProp);
 
@@ -38,21 +46,19 @@ export function buildMarkAsReadLink(filePath: string, settings: PluginSettings):
  *
  * Finds the file by basename and toggles the checkbox property.
  * Register in main.ts via plugin.registerObsidianProtocolHandler().
+ *
+ * Note: Obsidian decodes URI parameters once before calling this handler.
+ * The builder's double-encoding (encode + escape %) ensures that after
+ * Obsidian's single decode, params['file'] contains the original basename.
+ * Do NOT decode again here — use params['file'] directly.
  */
 export async function handleMarkAsRead(app: App, params: Record<string, string>): Promise<void> {
-    const rawFile     = params['file']     ?? '';
+    const basename     = params['file']     ?? '';
     const propertyKey = params['property'] ? decodeURIComponent(params['property']) : 'Checkbox';
 
-    if (!rawFile) {
+    if (!basename) {
         new Notice('RSS: Mark as Read — missing file name.');
         return;
-    }
-
-    let basename: string;
-    try {
-        basename = decodeURIComponent(rawFile);
-    } catch {
-        basename = rawFile;
     }
 
     const file = app.vault.getMarkdownFiles().find(f => f.basename === basename);

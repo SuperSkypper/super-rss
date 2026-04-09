@@ -4,17 +4,25 @@ import { RawFeedItem } from './feedExtractor';
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export function processItem(raw: RawFeedItem): FeedItem {
-    const link = processLink(raw.link);
+    const link    = processLink(raw.link);
+    const content = processContent(raw.content, link);
+
+    // Inject the hero image at the top of the content when present and not
+    // already referenced inside the content body (avoids duplicates).
+    const imageUrl  = raw.imageUrl || '';
+    const heroEmbed = imageUrl && !content.includes(imageUrl)
+        ? `![](${imageUrl})\n\n`
+        : '';
 
     return {
         title:            processTitle(raw.title),
         link,
-        content:          processContent(raw.content, link),
+        content:          heroEmbed + content,
         description:      processDescription(raw.description),
         descriptionShort: processDescriptionShort(raw.description),
         author:           processAuthor(raw.author),
         pubDate:          processPubDate(raw.pubDate),
-        imageUrl:         raw.imageUrl || '',
+        imageUrl,
         categories:       processCategories(raw.categories),
         duration:         raw.duration,
     };
@@ -109,14 +117,24 @@ function processLink(raw: any): string {
 /**
  * Strips HTML down to readable plain text:
  *   1. Remove HTML comments (e.g. Reddit's <!-- SC_OFF --> blocks)
- *   2. Replace block-level tags with newlines so paragraphs are preserved
- *   3. Strip all remaining tags
- *   4. Decode HTML entities
- *   5. Collapse excess whitespace
+ *   2. Convert <img> tags to Markdown syntax so images are preserved
+ *   3. Replace block-level tags with newlines so paragraphs are preserved
+ *   4. Strip all remaining tags
+ *   5. Decode HTML entities
+ *   6. Collapse excess whitespace
+ *
+ * Exported so callers outside this module (e.g. feedUpdate.ts) can clean
+ * HTML returned by Defuddle when the Markdown conversion was not applied.
  */
-function cleanHtml(html: string): string {
+export function cleanHtml(html: string): string {
+    // Extract alt before src so the regex can capture both attributes in any order
+    const withImages = html.replace(
+        /<img(?=[^>]*\bsrc=["']([^"']+)["'])(?=[^>]*)?(?:.*?\balt=["']([^"']*)["'])?[^>]*>/gi,
+        (match, src, alt = '') => `\n![${alt}](${src})\n`
+    );
+
     return decodeHtmlEntities(
-        html
+        withImages
             .replace(/<!--[\s\S]*?-->/g, '')
             .replace(/<\/?(p|br|div|blockquote|li|h[1-6]|tr)[^>]*>/gi, '\n')
             .replace(/<[^>]+>/g, '')
@@ -135,10 +153,15 @@ function youtubeEmbed(link: string): string | null {
 
 function processContent(raw: any, link = ''): string {
     const embed = link ? youtubeEmbed(link) : null;
-    if (embed) return embed;
-    if (!raw) return '';
+
+    if (!raw) return embed ?? '';
+
     const text = typeof raw === 'string' ? raw : (raw?._ ?? String(raw));
-    return cleanHtml(text);
+
+    const cleaned = cleanHtml(text);
+
+    // Prepend the YouTube embed so it appears at the top of the saved note.
+    return embed ? `${embed}\n\n${cleaned}` : cleaned;
 }
 
 // ─── Description ─────────────────────────────────────────────────────────────

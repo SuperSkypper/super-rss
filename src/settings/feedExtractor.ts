@@ -1,19 +1,18 @@
 import { requestUrl } from 'obsidian';
+import Defuddle from 'defuddle/full';
 
 // ─── Raw types (no transformation applied) ───────────────────────────────────
 
 export interface RawFeedItem {
-    title:            any;
-    link:             any;
-    content:          any;
-    description:      any;
-    author:           any;
-    pubDate:          any;
-    imageUrl:         any;
-    categories:       any;
+    title:            string | { _?: string } | undefined;
+    link:             string | { $?: { href: string } } | { $?: { rel: string } }[] | undefined;
+    content:          string | { _?: string } | undefined;
+    description:      string | { _?: string } | undefined;
+    author:           string | { name?: string; _?: string } | undefined;
+    pubDate:          string | undefined;
+    imageUrl:         string | undefined;
+    categories:       (string | { $?: { term: string }; _?: string })[] | undefined;
     duration:         string | undefined;
-    /** Original parsed entry object, kept for processors that need unlisted fields */
-    _raw:             any;
 }
 
 export interface RawFeed {
@@ -26,7 +25,7 @@ export interface RawFeed {
 // ─── Full content result ──────────────────────────────────────────────────────
 
 export interface FullContent {
-    /** Cleaned main content as HTML */
+    /** Main content as clean Markdown — always produced by defuddle/full */
     content: string;
 }
 
@@ -41,8 +40,9 @@ function parseXml(xmlText: string): Document {
     const parser = new DOMParser();
     const doc    = parser.parseFromString(xmlText, 'text/xml');
 
-    // DOMParser signals errors via a <parsererror> element instead of throwing
-    const parseError = doc.querySelector('parseerror');
+    // DOMParser signals errors via a <parsererror> element instead of throwing.
+    // The correct tag name is 'parsererror' (with two r's) — 'parseerror' never matches.
+    const parseError = doc.querySelector('parsererror');
     if (parseError) {
         throw new Error(`XML parse error: ${parseError.textContent}`);
     }
@@ -190,10 +190,11 @@ function extractChannelIdFromHtml(html: string): string | null {
 
 function extractVideoId(url: string): string | null {
     const patterns = [
-        /youtube\.com\/watch\?(?:.*&)?v=([\w-]+)/,
+        /youtube\.com\/watch\?v=([\w-]+)/,
         /youtu\.be\/([\w-]+)/,
         /youtube\.com\/shorts\/([\w-]+)/,
         /youtube\.com\/embed\/([\w-]+)/,
+        /youtube\.com\/v\/([\w-]+)/,
     ];
     for (const pattern of patterns) {
         const match = url.match(pattern);
@@ -202,83 +203,39 @@ function extractVideoId(url: string): string | null {
     return null;
 }
 
-function secondsToFormatted(totalSeconds: number): string {
-    const h  = Math.floor(totalSeconds / 3600);
-    const m  = Math.floor((totalSeconds % 3600) / 60);
-    const s  = totalSeconds % 60;
-    const mm = String(m).padStart(h > 0 ? 2 : 1, '0');
-    const ss = String(s).padStart(2, '0');
-    return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
-}
-
-function parseIsoDuration(iso: string): number {
-    const match = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-    if (!match) return 0;
-    return (parseInt(match[1] ?? '0') * 3600)
-         + (parseInt(match[2] ?? '0') * 60)
-         +  parseInt(match[3] ?? '0');
-}
-
 export async function fetchYoutubeDuration(videoUrl: string): Promise<string | undefined> {
     const videoId = extractVideoId(videoUrl);
     if (!videoId) return undefined;
 
     try {
-        const response = await requestUrl({
-            url: `https://www.youtube.com/watch?v=${videoId}`,
-            method: 'GET',
-            headers: {
-                'User-Agent':      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            },
-        });
+        const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
+        const response  = await requestUrl({ url: oembedUrl, method: 'GET' });
+        if (response.status !== 200) return undefined;
 
-        const html = response.text;
+        const pageUrl  = `https://www.youtube.com/watch?v=${videoId}`;
+        const pageResp = await requestUrl({ url: pageUrl, method: 'GET' });
+        if (pageResp.status !== 200) return undefined;
 
-        // Strategy 1: schema.org JSON-LD
-        const ldMatch = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
-        if (ldMatch?.[1]) {
-            try {
-                const ld          = JSON.parse(ldMatch[1]);
-                const isoDuration = ld?.duration as string | undefined;
-                if (isoDuration?.startsWith('PT')) {
-                    const seconds = parseIsoDuration(isoDuration);
-                    if (seconds > 0) return secondsToFormatted(seconds);
-                }
-            } catch { /* fall through */ }
+        const durationMatch = pageResp.text.match(/"lengthSeconds":"(\d+)"/);
+        if (!durationMatch?.[1]) return undefined;
+
+        const totalSeconds = parseInt(durationMatch[1], 10);
+        if (isNaN(totalSeconds) || totalSeconds <= 0) return undefined;
+
+        const hours   = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+
+        if (hours > 0) {
+            return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         }
-
-        // Strategy 2: ytInitialPlayerResponse blob
-        const lengthMatch = html.match(/"lengthSeconds"\s*:\s*"(\d+)"/);
-        if (lengthMatch?.[1]) {
-            const seconds = parseInt(lengthMatch[1]);
-            if (seconds > 0) return secondsToFormatted(seconds);
-        }
-
-        // Strategy 3: approxDurationMs in ytInitialData
-        const approxMatch = html.match(/"approxDurationMs"\s*:\s*"(\d+)"/);
-        if (approxMatch?.[1]) {
-            const seconds = Math.floor(parseInt(approxMatch[1]) / 1000);
-            if (seconds > 0) return secondsToFormatted(seconds);
-        }
-
-        // Strategy 4: <meta itemprop="duration">
-        const metaMatch = html.match(/<meta\s+itemprop="duration"\s+content="(PT[^"]+)"/);
-        if (metaMatch?.[1]) {
-            const seconds = parseIsoDuration(metaMatch[1]);
-            if (seconds > 0) return secondsToFormatted(seconds);
-        }
-
-        console.warn(`RSS: Could not extract duration for video "${videoId}" — all strategies failed`);
-        return undefined;
-    } catch (error) {
-        console.warn(`RSS: Could not fetch duration for video "${videoId}":`, error);
+        return `${minutes}:${String(seconds).padStart(2, '0')}`;
+    } catch {
         return undefined;
     }
 }
 
-// ─── Main entry point ─────────────────────────────────────────────────────────
+// ─── Feed fetching & extraction ───────────────────────────────────────────────
 
 export async function fetchAndExtract(rawUrl: string): Promise<RawFeed> {
     try {
@@ -365,7 +322,6 @@ function extractAtomItems(doc: Document): RawFeedItem[] {
             imageUrl,
             categories,
             duration:    undefined,
-            _raw:        entry.outerHTML,
         };
     });
 }
@@ -410,56 +366,56 @@ function extractRssItems(doc: Document): RawFeedItem[] {
             imageUrl,
             categories,
             duration:    undefined,
-            _raw:        item.outerHTML,
         };
     });
 }
 
-// ─── Full content extraction via Defuddle API ─────────────────────────────────
+// ─── Full content extraction via Defuddle ────────────────────────────────────
 
-const DEFUDDLE_API = 'https://defuddle.md/';
+// ─── Full content extraction via Defuddle ────────────────────────────────────
 
 /**
- * Fetches clean Markdown for a URL using the defuddle.md API.
+ * Fetches the article HTML via requestUrl and extracts the main content as
+ * Markdown using Defuddle (full bundle) running in Obsidian's native browser DOM.
  *
- * The API runs Defuddle in a real browser environment (with CSS loaded),
- * which produces much cleaner output than running Defuddle locally against
- * raw HTML fetched via requestUrl (no CSS = no mobile-style heuristics).
- *
- * Response format: Markdown with YAML frontmatter.
- * We strip the frontmatter and return only the content body, since title,
- * author, pubDate, and image are already sourced from the RSS feed itself.
+ * defuddle/full honours { markdown: true } and always returns clean Markdown —
+ * no HTML-stripping pipeline is needed on the caller side.
  *
  * Falls back to null on any error so callers can gracefully use feed content.
  */
 export async function fetchFullContent(url: string): Promise<FullContent | null> {
     try {
-        // FIX: strip URL fragment (#section) before appending to API base —
-        // fragments are not sent to servers but could produce a malformed path.
-        const cleanUrl = url.split('#')[0] ?? url;
-        const apiUrl   = DEFUDDLE_API + cleanUrl.replace(/^https?:\/\//, '');
-
         const response = await requestUrl({
-            url:     apiUrl,
+            url,
             method:  'GET',
-            headers: { 'Accept': 'text/plain' },
+            headers: {
+                'User-Agent':      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+            },
         });
 
         if (response.status !== 200) return null;
 
-        const markdown = response.text?.trim() ?? '';
-        if (!markdown) return null;
+        const html = response.text?.trim() ?? '';
+        if (!html) return null;
 
-        // Strip YAML frontmatter (--- ... ---) — metadata comes from the feed
-        const content = markdown
-            .replace(/^---\n[\s\S]*?\n---\n?/, '')
-            .trim();
+        const parser = new DOMParser();
+        const doc    = parser.parseFromString(html, 'text/html');
 
+        // Set the base URL so relative links resolve correctly
+        const base = doc.createElement('base');
+        base.href  = url;
+        doc.head.appendChild(base);
+
+        const result = new Defuddle(doc, { markdown: true, url }).parse();
+
+        const content = result?.content?.trim() ?? '';
         if (!content) return null;
 
         return { content };
     } catch (e) {
-        console.warn(`RSS: defuddle.md failed for ${url}:`, e);
+        console.warn(`RSS: Defuddle failed for ${url}:`, e);
         return null;
     }
 }

@@ -421,11 +421,13 @@ export function openBulkEditModal(
                     if (a.folder)              feed.folder               = v.folder;
                     if (a.updateIntervalValue) { feed.updateIntervalValue = v.updateIntervalValue; feed.updateIntervalUnit = v.updateIntervalUnit; }
                     if (a.autoCleanupValue)    { feed.autoCleanupValue = v.autoCleanupValue; feed.autoCleanupUnit = v.autoCleanupUnit; feed.autoCleanupDateField = v.autoCleanupDateField; }
-                    if (a.tagShorts)           feed.tagShorts  = v.tagShorts;
-                    if (a.skipShorts)          feed.skipShorts = v.skipShorts;
-                    if (a.titleTemplate)       feed.titleTemplate       = v.titleTemplate;
-                    if (a.frontmatterTemplate) feed.frontmatterTemplate = v.frontmatterTemplate;
-                    if (a.contentTemplate)     feed.contentTemplate     = v.contentTemplate;
+                    // Use the apply flag alone — not the value — so that 'use global'
+                    // (undefined) and empty-string templates are applied correctly.
+                    if (a.tagShorts)           feed.tagShorts           = v.tagShorts;
+                    if (a.skipShorts)          feed.skipShorts          = v.skipShorts;
+                    if (a.titleTemplate)       feed.titleTemplate       = v.titleTemplate       || undefined;
+                    if (a.frontmatterTemplate) feed.frontmatterTemplate = v.frontmatterTemplate || undefined;
+                    if (a.contentTemplate)     feed.contentTemplate     = v.contentTemplate     || undefined;
                 });
 
                 await plugin.saveSettings();

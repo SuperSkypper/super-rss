@@ -7,6 +7,8 @@ import { renderOpmlTab }           from './settings/settingsOPML';
 import { AddUrlModal }             from './settings/feedAdd';
 import { addFeed }                 from './settings/feedAdd';
 import { cleanupOldFiles }         from './settings/feedSaver';
+import { deleteOrphanedDbArticles } from './settings/feedDelete';
+import { tagDuplicatesInVault }    from './settings/feedDuplicate';
 
 export class RssSettingTab extends PluginSettingTab {
     plugin: RssPlugin;
@@ -57,8 +59,8 @@ export class RssSettingTab extends PluginSettingTab {
             return;
         }
 
-        const { loadFeedDatabase, saveFeedDatabase } = await import('./settings/feedDatabase');
-        const db = await loadFeedDatabase(this.app);
+        const { loadAutoDatabase, saveAutoDatabase } = await import('./settings/feedDatabase');
+        const db = await loadAutoDatabase(this.app);
         let totalDeleted = 0;
 
         for (const feed of enabledFeeds) {
@@ -104,10 +106,25 @@ export class RssSettingTab extends PluginSettingTab {
             }
         }
 
-        await saveFeedDatabase(this.app, db);
+        // Orphan pass — delete any vault files whose DB entry is marked as
+        // skip_shorts, skip_live, old_article, or mark_as_read but the file
+        // still exists in the vault.
+        // deleteOrphanedDbArticles loads its own fresh combined DB internally.
+        totalDeleted += await deleteOrphanedDbArticles(
+            this.app.vault,
+            this.app,
+            this.plugin.settings.folderPath
+        );
+
+        // ── Tag and delete duplicates ─────────────────────────────────────────
+        try {
+            totalDeleted += await tagDuplicatesInVault(this.app, this.plugin);
+        } catch (e) {
+            console.error('RSS: tagDuplicatesInVault failed:', e);
+        }
 
         if (totalDeleted === 0) {
-            new Notice('No old articles to delete.', 4000);
+            new Notice('No old or duplicate articles to delete.', 4000);
         } else {
             new Notice(`${totalDeleted} article${totalDeleted !== 1 ? 's' : ''} deleted.`, 4000);
         }
@@ -227,8 +244,7 @@ export class RssSettingTab extends PluginSettingTab {
         cleanupBtn.addEventListener('mouseenter', () => { cleanupBtn.style.color = 'var(--color-red)'; cleanupBtn.style.borderColor = 'var(--color-red)'; });
         cleanupBtn.addEventListener('mouseleave', () => { cleanupBtn.style.color = 'var(--text-muted)'; cleanupBtn.style.borderColor = 'var(--background-modifier-border)'; });
         cleanupBtn.onclick = async () => {
-            // Dedup always runs; cleanup rules are optional
-
+            new Notice('Running cleanup...', 3000);
             await this.runCleanupAndDedup();
         };
 
@@ -298,6 +314,33 @@ export class RssSettingTab extends PluginSettingTab {
                 await (this.app as any).plugins.disablePlugin(pluginId);
                 await (this.app as any).plugins.enablePlugin(pluginId);
                 await (this.app as any).setting.openTabById(pluginId);
+            };
+
+            // ── Tag Duplicates button (dev mode only) ─────────────────────────
+            const tagDupBtn = tabHeader.createEl('button');
+            tagDupBtn.title = 'Tag duplicate articles';
+            tagDupBtn.style.cssText = `
+                display: flex; align-items: center; justify-content: center;
+                width: 30px; height: 30px;
+                ${this.isTouchDevice() ? 'min-width: 44px; min-height: 44px;' : ''}
+                padding: 0; border-radius: 6px; cursor: pointer;
+                border: 1px solid var(--background-modifier-border);
+                background: var(--background-secondary-alt); color: var(--text-muted);
+                transition: all 0.15s ease;
+            `;
+            const tagDupIcon = tagDupBtn.createDiv();
+            tagDupIcon.style.cssText = 'display: flex; align-items: center; width: 16px; height: 16px;';
+            setIcon(tagDupIcon, 'copy');
+            tagDupBtn.addEventListener('mouseenter', () => { tagDupBtn.style.color = 'var(--interactive-accent)'; tagDupBtn.style.borderColor = 'var(--interactive-accent)'; });
+            tagDupBtn.addEventListener('mouseleave', () => { tagDupBtn.style.color = 'var(--text-muted)'; tagDupBtn.style.borderColor = 'var(--background-modifier-border)'; });
+            tagDupBtn.onclick = async () => {
+                tagDupBtn.disabled = true;
+                try {
+                    const count = await tagDuplicatesInVault(this.app, this.plugin);
+                    new Notice(count > 0 ? `Processed ${count} duplicate article${count !== 1 ? 's' : ''}.` : 'No duplicates found.', 4000);
+                } finally {
+                    tagDupBtn.disabled = false;
+                }
             };
         }
 

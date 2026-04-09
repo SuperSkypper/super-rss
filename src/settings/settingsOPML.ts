@@ -152,12 +152,15 @@ async function importFeeds(
         }
 
         const newFeed: FeedConfig = {
-            name:        parsedFeed.name,
-            url:         parsedFeed.url,
-            folder:      '',
-            enabled:     true,
-            lastUpdated: Date.now(),
+            name:         parsedFeed.name,
+            url:          parsedFeed.url,
+            folder:       '',
+            enabled:      true,
+            lastUpdated:  Date.now(),
             groupId,
+            // previousName must match name at creation so renameFeedFoldersIfNeeded()
+            // does not attempt a spurious rename on the first edit of the feed.
+            previousName: parsedFeed.name,
         };
 
         plugin.settings.feeds.push(newFeed);

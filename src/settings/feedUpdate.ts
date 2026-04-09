@@ -1,9 +1,11 @@
-import { App, Notice, Vault, normalizePath } from 'obsidian';
-import RssPlugin, { FeedConfig, PluginSettings, resolveFeedPath } from '../main';
+import { App, Notice, normalizePath } from 'obsidian';
+import RssPlugin, { FeedConfig, resolveFeedPath } from '../main';
 import { fetchAndExtract, fetchYoutubeDuration, fetchFullContent } from './feedExtractor';
-import { processItems } from './feedProcessor';
-import { saveFeedItem, cleanupOldFiles } from './feedSaver';
-import { loadFeedDatabase, saveFeedDatabase, registerDeleted, FeedDatabase } from './feedDatabase';
+import { processItems, sanitizeFileName } from './feedProcessor';
+import { saveFeedItem, applyTemplate } from './feedSaver';
+import { cleanupOldFiles, deleteLiveArticlesForFeed, runAutoCleanup } from './feedDelete';
+import { loadAutoDatabase, saveAutoDatabase, loadUserDatabase, isKnown, AutoDatabase } from './feedDatabase';
+import { tagDuplicatesInVault } from './feedDuplicate';
 import { extractImageUrl, upgradeYoutubeThumbnail } from './imageHandler';
 
 // ── Update lockfile ───────────────────────────────────────────────────────────
@@ -15,6 +17,12 @@ const LOCK_TTL_MS = 5 * 60 * 1000;
 interface LockData {
     instanceId: string;
     startedAt:  number;
+}
+
+function parsePubDate(date?: string): number | null {
+    if (!date) return null;
+    const ts = Date.parse(date);
+    return Number.isFinite(ts) ? ts : null;
 }
 
 function getLockPath(app: App): string {
@@ -50,7 +58,7 @@ async function acquireLock(app: App): Promise<boolean> {
     return true;
 }
 
-async function releaseLock(app: App): Promise<void> {
+export async function releaseLock(app: App): Promise<void> {
     const path    = getLockPath(app);
     const adapter = app.vault.adapter;
 
@@ -69,56 +77,7 @@ async function releaseLock(app: App): Promise<void> {
 
 // ── Delete live articles for a feed ──────────────────────────────────────────
 
-async function deleteLiveArticlesForFeed(app: App, feedPath: string, db: FeedDatabase): Promise<number> {
-    const { vault, metadataCache } = app;
-    const folder = vault.getAbstractFileByPath(feedPath);
-    if (!folder) return 0;
-
-    const normalizedFeedPath = normalizePath(feedPath);
-    const files = vault.getMarkdownFiles().filter(f => f.path.startsWith(normalizedFeedPath + '/'));
-    let deletedCount = 0;
-
-    for (const file of files) {
-        const cache = metadataCache.getFileCache(file);
-        const tags  = [
-            ...(cache?.tags?.map(t => t.tag) ?? []),
-            ...(cache?.frontmatter?.tags ?? []),
-        ].map((t: string) => t.replace(/^#/, '').toLowerCase());
-
-        if (!tags.includes('live')) continue;
-
-        let itemLink: string | null = cache?.frontmatter?.['link'] ?? null;
-        if (!itemLink) {
-            try {
-                const content          = await vault.cachedRead(file);
-                const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-                if (frontmatterMatch) {
-                    for (const line of (frontmatterMatch[1] ?? '').split('\n')) {
-                        const ci = line.indexOf(':');
-                        if (ci === -1) continue;
-                        if (line.slice(0, ci).trim().toLowerCase() === 'link') {
-                            itemLink = line.slice(ci + 1).trim().replace(/^["']|["']$/g, '');
-                            break;
-                        }
-                    }
-                }
-            } catch { /* ignore */ }
-        }
-
-        try {
-            await vault.delete(file);
-            deletedCount++;
-
-            if (itemLink) {
-                db[itemLink] = { link: itemLink, pubDate: '', status: 'deleted_cleanup' };
-            }
-        } catch (e) {
-            console.error(`RSS: Failed to delete live article "${file.path}":`, e);
-        }
-    }
-
-    return deletedCount;
-}
+// deleteLiveArticlesForFeed is imported from feedDelete.ts
 
 // ── Update a single feed ──────────────────────────────────────────────────────
 
@@ -126,7 +85,7 @@ export async function updateFeed(
     app:      App,
     plugin:   RssPlugin,
     feed:     FeedConfig,
-    db:       FeedDatabase,
+    db:       AutoDatabase,
 ): Promise<{ saved: number; deleted: number }> {
     let saved   = 0;
     let deleted = 0;
@@ -136,56 +95,85 @@ export async function updateFeed(
 
         const isYoutubeFeed = /youtube\.com|youtu\.be/.test(feed.url);
 
-        // ── Fetch YouTube durations ───────────────────────────────────────────
-        if (isYoutubeFeed) {
+        // ── Early filter by lastUpdated ────────────────────────────────────────
+        const lastUpdatedBoundary = typeof feed.lastUpdated === 'number' ? feed.lastUpdated : null;
+        const filteredRawItems = lastUpdatedBoundary !== null
+            ? raw.items.filter(item => {
+                const itemPubTime = parsePubDate(item.pubDate);
+                return itemPubTime === null || itemPubTime > lastUpdatedBoundary;
+            })
+            : raw.items;
+
+        // ── Fetch YouTube durations only for filtered items ───────────────────
+        if (isYoutubeFeed && filteredRawItems.length > 0) {
+            // Limit concurrency to avoid overwhelming the network
+            const BATCH_SIZE = 5;
+            for (let i = 0; i < filteredRawItems.length; i += BATCH_SIZE) {
+                const batch = filteredRawItems.slice(i, i + BATCH_SIZE);
+                await Promise.all(
+                    batch.map(async rawItem => {
+                        const link =
+                            typeof rawItem.link === 'string'
+                                ? rawItem.link
+                                : (rawItem.link as any)?.$?.href ?? '';
+                        if (link) {
+                            rawItem.duration = await fetchYoutubeDuration(link);
+                        }
+                    })
+                );
+            }
+        }
+
+        // ── Upgrade YouTube thumbnails on filtered raw items ──────────────────
+        if (isYoutubeFeed && filteredRawItems.length > 0) {
             await Promise.all(
-                raw.items.map(async rawItem => {
-                    const link =
-                        typeof rawItem.link === 'string'
-                            ? rawItem.link
-                            : (rawItem.link as any)?.$?.href ?? '';
-                    if (link) {
-                        rawItem.duration = await fetchYoutubeDuration(link);
+                filteredRawItems.map(async rawItem => {
+                    if (rawItem.imageUrl) {
+                        rawItem.imageUrl = await upgradeYoutubeThumbnail(rawItem.imageUrl);
                     }
                 })
             );
         }
 
-        const items              = processItems(raw.items);
+        const items              = processItems(filteredRawItems);
         const absoluteFolderPath = resolveFeedPath(feed, plugin.settings);
 
-        // ── Upgrade YouTube thumbnails to highest available resolution ─────────
-        // item.imageUrl is populated from the feed XML at this point (hqdefault).
-        // extractImageUrl is skipped for YouTube feeds, so we call the upgrade
-        // directly here — applies whether images are downloaded or just linked.
-        if (isYoutubeFeed) {
-            await Promise.all(
-                items.map(async item => {
-                    if (item.imageUrl) {
-                        item.imageUrl = await upgradeYoutubeThumbnail(item.imageUrl);
-                    }
-                })
-            );
-        }
+        // ── Load userDb once per feed update ───────────────────────────────────
+        const userDb = await loadUserDatabase(app);
 
         for (const item of items) {
             if (!isYoutubeFeed) {
-                // ── Fetch full content via Defuddle ───────────────────────────
-                if (item.link) {
-                    const full = await fetchFullContent(item.link);
-                    if (full?.content) {
-                        item.content = full.content;
-                    }
-                }
+                // Skip network-heavy steps for items already in the blacklist DB —
+                // saveFeedItem will discard them anyway, so Defuddle/OG fetches
+                // would be wasted I/O. Items not in the DB still need the vault
+                // existence check, but that happens inside saveFeedItem.
+                const isBlacklisted = !!item.link && isKnown(db, item.link);
 
-                // ── Fallback image extraction via OpenGraph ────────────────────
-                // If the feed didn't include an image in the XML (no media:thumbnail,
-                // enclosure, or <img> in content), fetch the article page and look
-                // for og:image / twitter:image meta tags.
-                // We pass {} as the raw object to skip XML-field steps and go
-                // straight to the OpenGraph fallback (step 6 of extractImageUrl).
-                if (!item.imageUrl && item.link) {
-                    item.imageUrl = await extractImageUrl({}, item.link);
+                if (!isBlacklisted) {
+                    // Skip network-heavy steps if the file already exists in the vault —
+                    // saveFeedItem will block it anyway via the vault dedup check.
+                    const fileNameTemplate = feed.titleTemplate || plugin.settings.fileNameTemplate || '{{title}}';
+                    const rawFileName      = applyTemplate(fileNameTemplate, item, true, false, feed.name || '');
+                    const fileName         = sanitizeFileName(rawFileName) + '.md';
+                    const filePath         = normalizePath(`${absoluteFolderPath}/${fileName}`);
+                    const fileExists       = await app.vault.adapter.exists(filePath);
+
+                    if (!fileExists) {
+                        // ── Fetch full content via Defuddle ───────────────────────────
+                        // defuddle/full always returns clean Markdown — no HTML pipeline needed.
+                        if (item.link) {
+                            const full = await fetchFullContent(item.link);
+                            if (full?.content) {
+                                item.content = full.content;
+                            }
+                        }
+
+                        // ── Fallback image extraction via OpenGraph ────────────────────
+                        // If the feed XML had no image, fetch og:image / twitter:image from the page.
+                        if (!item.imageUrl && item.link) {
+                            item.imageUrl = await extractImageUrl({}, item.link);
+                        }
+                    }
                 }
             }
 
@@ -196,20 +184,25 @@ export async function updateFeed(
                 absoluteFolderPath,
                 plugin.settings,
                 feed,
-                db
+                db,
+                userDb
             );
             if (isSaved) saved++;
         }
 
+        feed.lastUpdated = Date.now();
+        await plugin.saveSettingsSilent();
         if (saved > 0) {
-            feed.lastUpdated = Date.now();
-            await plugin.saveSettingsSilent();
             console.log(`RSS: Saved ${saved} new items for ${feed.name}`);
         }
 
         // ── Delete live articles ──────────────────────────────────────────────
         if (feed.deleteLives) {
             deleted += await deleteLiveArticlesForFeed(app, absoluteFolderPath, db);
+            // Save immediately — deleteLiveArticlesForFeed mutates db in place
+            // but doesn't save. If cleanupOldFiles throws below, these entries
+            // would be lost without this save.
+            if (deleted > 0) await saveAutoDatabase(app, db);
         }
 
         // ── Cleanup old files ─────────────────────────────────────────────────
@@ -233,7 +226,7 @@ export async function updateFeed(
             );
         }
 
-        await saveFeedDatabase(app, db);
+        await saveAutoDatabase(app, db);
 
     } catch (error) {
         console.error(`RSS Error [${feed.name || feed.url}]:`, error);
@@ -280,7 +273,7 @@ export async function updateAllFeeds(
         let totalSaved   = 0;
         let totalDeleted = 0;
 
-        const db = await loadFeedDatabase(app);
+        const db = await loadAutoDatabase(app);
 
         for (let i = 0; i < total; i++) {
             if (!plugin.isUpdating) break;
@@ -295,34 +288,26 @@ export async function updateAllFeeds(
             totalDeleted += deleted;
         }
 
-        // ── Global cleanup for feeds without per-feed override ────────────────
-        if (plugin.isUpdating && plugin.settings.autoCleanupValue > 0) {
+        // ── Global cleanup + orphan pass ─────────────────────────────────────
+        if (plugin.isUpdating) {
             try {
-                const feedsWithoutOverride = enabledFeeds.filter(
-                    f => f.autoCleanupValue == null || f.autoCleanupValue <= 0
-                );
-                for (const feed of feedsWithoutOverride) {
-                    if (!plugin.isUpdating) break;
-
-                    const feedPath = resolveFeedPath(feed, plugin.settings);
-                    totalDeleted  += await cleanupOldFiles(
-                        app.vault,
-                        app,
-                        feedPath,
-                        plugin.settings.autoCleanupValue,
-                        plugin.settings.autoCleanupUnit,
-                        plugin.settings.autoCleanupDateField,
-                        plugin.settings,
-                        db
-                    );
-                }
-                await saveFeedDatabase(app, db);
+                totalDeleted += await runAutoCleanup(app, plugin, db);
             } catch (cleanupError) {
-                console.error('Cleanup failed:', cleanupError);
+                console.error('RSS: auto cleanup failed:', cleanupError);
             }
         }
 
         plugin.clearStatusBar();
+
+        // ── Tag duplicates retroactively ──────────────────────────────────────
+        if (plugin.isUpdating) {
+            try {
+                await tagDuplicatesInVault(app, plugin);
+            } catch (e) {
+                console.error('RSS: tagDuplicatesInVault failed:', e);
+            }
+        }
+
         if (plugin.isUpdating) plugin.showSummary(totalSaved, totalDeleted);
 
     } finally {

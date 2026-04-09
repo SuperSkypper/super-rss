@@ -239,8 +239,8 @@ export function renderGeneralTab(
                 .addOption('subfolder', 'In subfolder under RSS folder')
                 .addOption('specified', 'In the folder specified below')
                 .setValue(plugin.settings.imageLocation || 'obsidian')
-                .onChange(async (value: ImageLocation) => {
-                    plugin.settings.imageLocation = value;
+                .onChange(async (value: string) => {
+                    plugin.settings.imageLocation = value as ImageLocation;
                     try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
                     rerender();
                 }));
@@ -415,8 +415,8 @@ export function renderGeneralTab(
             .addOption('minutes', 'Minutes').addOption('hours',  'Hours')
             .addOption('days',    'Days')   .addOption('months', 'Months')
             .setValue(plugin.settings.updateIntervalUnit ?? 'minutes')
-            .onChange(async (v: IntervalUnit) => {
-                plugin.settings.updateIntervalUnit = v;
+            .onChange(async (v: string) => {
+                plugin.settings.updateIntervalUnit = v as IntervalUnit;
                 try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
             }));
     applyCardStyle(intervalSetting);
@@ -459,8 +459,8 @@ export function renderGeneralTab(
                 .addOption('minutes', 'Minutes').addOption('hours',  'Hours')
                 .addOption('days',    'Days')   .addOption('months', 'Months')
                 .setValue(plugin.settings.autoCleanupUnit ?? 'days')
-                .onChange(async (v: IntervalUnit) => {
-                    plugin.settings.autoCleanupUnit = v;
+                .onChange(async (v: string) => {
+                    plugin.settings.autoCleanupUnit = v as IntervalUnit;
                     try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
                 }));
         applyCardStyle(cleanupSetting);
@@ -473,8 +473,8 @@ export function renderGeneralTab(
                 .addOption('datesaved', '{{datesaved}} — Date the article was saved')
                 .addOption('datepub',   '{{datepub}} — Date the article was published')
                 .setValue(plugin.settings.autoCleanupDateField ?? 'datesaved')
-                .onChange(async (v: CleanupDateField) => {
-                    plugin.settings.autoCleanupDateField = v;
+                .onChange(async (v: string) => {
+                    plugin.settings.autoCleanupDateField = v as CleanupDateField;
                     try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
                 }));
         applyCardStyle(cleanupDateFieldSetting);
@@ -514,6 +514,7 @@ export function renderGeneralTab(
             applyIndent(protectedPropertySetting.settingEl, 2);
         }
     }
+
 
     // ── Ribbon Icons ──────────────────────────────────────────────────────────
 

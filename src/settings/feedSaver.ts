@@ -1,9 +1,12 @@
-import { App, Vault, TFile, normalizePath } from 'obsidian';
+import { App, Vault, normalizePath } from 'obsidian';
 import { FeedItem, FeedConfig, PluginSettings } from '../main';
 import { sanitizeFileName } from './feedProcessor';
 import { downloadImageLocally, resolveObsidianAttachmentPath } from './imageHandler';
 import { buildMarkAsReadLink } from './feedMarkAsRead';
-import { loadFeedDatabase, saveFeedDatabase, registerSaved, registerDeleted, isKnown, getStatus, FeedDatabase } from './feedDatabase';
+import { loadCombinedDatabase, loadAutoDatabase, loadUserDatabase, saveAutoDatabase, saveUserDatabase, registerAuto, registerOldArticle, isKnown, getStatus, AutoDatabase, UserDatabase } from './feedDatabase';
+import { cleanupOldFiles, deleteOrphanedDbArticles, toMilliseconds } from './feedDelete';
+export { cleanupOldFiles, deleteOrphanedDbArticles } from './feedDelete';
+import { injectDuplicateTag } from './feedDuplicate';
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
@@ -84,7 +87,8 @@ export async function saveFeedItem(
     folderPath: string,
     settings:   PluginSettings,
     feed:       FeedConfig,
-    db?:        FeedDatabase
+    db?:        AutoDatabase,
+    userDb?:    UserDatabase
 ): Promise<boolean> {
     const feedName = feed.name || '';
 
@@ -98,8 +102,19 @@ export async function saveFeedItem(
     await ensureFolder(vault, fullFolderPath);
 
     const ownDb    = !db;
-    db             = db ?? await loadFeedDatabase(app);
-    const itemLink = item.link || fileName;
+    db             = db ?? await loadAutoDatabase(app);
+
+    // Build a combined view (auto + user) for read-only blocking checks.
+    // Writes always go to the auto DB — the user DB is written via registerManualRead.
+    // When db was passed in by updateFeed it only contains auto entries, so we
+    // merge in the user DB here to ensure manually deleted articles are also blocked.
+    const ownUserDb = !userDb;
+    userDb          = userDb ?? await loadUserDatabase(app);
+    const combined  = { ...userDb, ...db };
+
+    // Link is the canonical identifier — if absent, the item cannot be tracked reliably.
+    if (!item.link) return false;
+    const itemLink = item.link;
 
     // ── Resolve skip_shorts setting ───────────────────────────────────────────
     const skipShortsEnabled =
@@ -107,26 +122,35 @@ export async function saveFeedItem(
         feed.skipShorts === false ? false :
         (settings.skipShortsGlobal ?? false);
 
-    // ── Check db — source of truth ────────────────────────────────────────────
-    if (isKnown(db, itemLink)) {
-        const status = getStatus(db, itemLink);
-        if (status === 'deleted_skip_shorts' && !skipShortsEnabled) {
-            // User disabled skip_shorts — remove entry and allow re-import
+    // ── DB filter — blocks items that were auto-deleted by the plugin ───────────
+    // The DB is a blacklist of links that should never be re-imported.
+    // 'saved' no longer exists as a status — the vault is the source of truth
+    // for whether an item was already saved. If the file exists, block; if not, save.
+    let markedAsDuplicate = false;
+
+    // Use combined DB (auto + user) for all blocking checks so that manually
+    // deleted articles are also prevented from being re-imported.
+    if (isKnown(combined, itemLink)) {
+        const status = getStatus(combined, itemLink);
+
+        if (status === 'skip_shorts' && !skipShortsEnabled) {
+            // User disabled skip_shorts — remove from blacklist and allow re-import
             delete db[itemLink];
-            if (ownDb) await saveFeedDatabase(app, db);
-        } else if (status === 'deleted_manual') {
-            // User manually deleted — always allow re-import, remove entry
-            delete db[itemLink];
-            if (ownDb) await saveFeedDatabase(app, db);
-        } else if (status === 'saved') {
-            // File may have been deleted outside the plugin (via OS or Obsidian UI).
-            // If the file no longer exists on disk, clear the db entry and re-import.
-            if (!(await vault.adapter.exists(filePath))) {
-                delete db[itemLink];
-                if (ownDb) await saveFeedDatabase(app, db);
-            } else {
-                return false;
-            }
+            if (ownDb) await saveAutoDatabase(app, db);
+        } else {
+            // All other statuses (old_article, skip_live, skip_shorts, mark_as_read)
+            // are permanent blocks — do not re-import.
+            return false;
+        }
+    }
+
+    // ── Vault dedup — block if the file already exists ────────────────────────
+    // The DB has no 'saved' entries anymore; the vault file is the source of truth.
+    // If pubDate changed, the publisher updated the article — re-import as duplicate.
+    if (await vault.adapter.exists(filePath)) {
+        const storedPubDate = combined[itemLink]?.pubDate ?? '';
+        if (storedPubDate && item.pubDate && storedPubDate !== item.pubDate) {
+            markedAsDuplicate = true;
         } else {
             return false;
         }
@@ -146,8 +170,9 @@ export async function saveFeedItem(
                 const pubTime = Date.parse(item.pubDate);
                 const cutoff  = Date.now() - toMilliseconds(cleanupValue, cleanupUnit);
                 if (!isNaN(pubTime) && pubTime < cutoff) {
-                    registerDeleted(db, itemLink, item.pubDate, 'deleted_pre_filter');
-                    if (ownDb) await saveFeedDatabase(app, db);
+                    const markAsReadMode = settings.markAsReadEnabled ?? false;
+                    await registerOldArticle(app, db, userDb, itemLink, item.pubDate, markAsReadMode);
+                    if (ownDb) await saveAutoDatabase(app, db);
                     return false;
                 }
             } catch { /* ignore */ }
@@ -156,23 +181,21 @@ export async function saveFeedItem(
 
     // ── Skip YouTube Shorts ───────────────────────────────────────────────────
     if (skipShortsEnabled && isYoutubeShort(item.link ?? '')) {
-        registerDeleted(db, itemLink, item.pubDate, 'deleted_skip_shorts');
-        if (ownDb) await saveFeedDatabase(app, db);
+        registerAuto(db, itemLink, item.pubDate, 'skip_shorts');
+        if (ownDb) await saveAutoDatabase(app, db);
         return false;
     }
 
     // ── Skip live streams ─────────────────────────────────────────────────────
-    const skipLiveEnabled = feed.tagLive === true ? false : (settings.tagLiveGlobal ?? false);
+    // skipLiveGlobal is a separate concern from tagLiveGlobal:
+    //   - tagLiveGlobal  → inject the #live tag (does NOT skip the article)
+    //   - deleteLives    → per-feed flag; live articles are deleted after saving
+    // There is no global "skip live" setting, so we only skip here when the
+    // per-feed deleteLives flag is explicitly set AND the item looks like a live.
+    const skipLiveEnabled = feed.deleteLives === true;
     if (skipLiveEnabled && isLiveStream(item.title ?? '', settings.tagLiveKeywords ?? '')) {
-        registerDeleted(db, itemLink, item.pubDate, 'deleted_skip_live');
-        if (ownDb) await saveFeedDatabase(app, db);
-        return false;
-    }
-
-    // ── Filesystem fallback — handles DB being empty on first run ─────────────
-    if (await vault.adapter.exists(filePath)) {
-        registerSaved(db, itemLink, item.pubDate);
-        if (ownDb) await saveFeedDatabase(app, db);
+        registerAuto(db, itemLink, item.pubDate, 'skip_live');
+        if (ownDb) await saveAutoDatabase(app, db);
         return false;
     }
 
@@ -203,8 +226,9 @@ export async function saveFeedItem(
     const frontmatterTemplate  = feed.frontmatterTemplate || settings.frontmatterTemplate;
     let   processedFrontmatter = applyTemplate(frontmatterTemplate, item, false, true, feedName);
 
-    if (shouldInjectShorts) processedFrontmatter = injectShortsTag(processedFrontmatter);
-    if (shouldInjectLive)   processedFrontmatter = injectLiveTag(processedFrontmatter);
+    if (shouldInjectShorts)  processedFrontmatter = injectShortsTag(processedFrontmatter);
+    if (shouldInjectLive)    processedFrontmatter = injectLiveTag(processedFrontmatter);
+    if (markedAsDuplicate)   processedFrontmatter = injectDuplicateTag(processedFrontmatter);
 
     if (feed.extraFrontmatterRaw?.trim()) {
         processedFrontmatter = `${processedFrontmatter.trimEnd()}\n${feed.extraFrontmatterRaw.trim()}`;
@@ -231,10 +255,18 @@ export async function saveFeedItem(
     }
 
     const finalContent = `---\n${processedFrontmatter}\n---\n\n${processedBody}`;
-    await vault.create(filePath, finalContent);
+    try {
+        await vault.create(filePath, finalContent);
+    } catch (e: any) {
+        // Another concurrent update already created this file — treat as success.
+        // Any other error is re-thrown so the caller knows the save failed.
+        if (!String(e?.message ?? '').toLowerCase().includes('already exists')) {
+            throw e;
+        }
+    }
 
-    registerSaved(db, itemLink, item.pubDate);
-    if (ownDb) await saveFeedDatabase(app, db);
+    if (ownDb) await saveAutoDatabase(app, db);
+    if (ownUserDb) await saveUserDatabase(app, userDb);
 
     return true;
 }
@@ -261,157 +293,6 @@ function resolveImageFolder(app: App, settings: PluginSettings, feedFolderPath: 
     }
 }
 
-// ─── Read date from frontmatter ───────────────────────────────────────────────
-
-async function readPubDateFromFrontmatter(app: App, vault: Vault, file: TFile): Promise<number | null> {
-    const pubDateKeys = ['upload date', 'date published', 'datepub'];
-
-    const fm = app.metadataCache.getFileCache(file)?.frontmatter;
-    if (fm) {
-        const key = Object.keys(fm).find(k => pubDateKeys.includes(k.toLowerCase()));
-        if (key && fm[key]) {
-            const parsed = Date.parse(String(fm[key]));
-            if (!isNaN(parsed)) return parsed;
-        }
-    }
-
-    try {
-        const content = await vault.cachedRead(file);
-        const match   = content.match(/^---\n([\s\S]*?)\n---/);
-        if (!match) return null;
-        for (const line of (match[1] ?? '').split('\n')) {
-            const ci = line.indexOf(':');
-            if (ci === -1) continue;
-            const key = line.slice(0, ci).trim().toLowerCase();
-            if (pubDateKeys.includes(key)) {
-                const val    = line.slice(ci + 1).trim().replace(/^["']|["']$/g, '');
-                const parsed = Date.parse(val);
-                if (!isNaN(parsed)) return parsed;
-            }
-        }
-    } catch { /* ignore */ }
-    return null;
-}
-
-// ─── Protected property check ─────────────────────────────────────────────────
-
-async function isFileProtected(vault: Vault, file: TFile, propertyName: string): Promise<boolean> {
-    try {
-        const content          = await vault.cachedRead(file);
-        const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-        if (!frontmatterMatch) return true;
-
-        const frontmatter = frontmatterMatch[1] ?? '';
-        const lines       = frontmatter.split('\n');
-
-        for (const line of lines) {
-            const colonIndex = line.indexOf(':');
-            if (colonIndex === -1) continue;
-            const key   = line.slice(0, colonIndex).trim();
-            const value = line.slice(colonIndex + 1).trim().toLowerCase();
-            if (key.toLowerCase() === propertyName.toLowerCase()) {
-                return value !== 'true';
-            }
-        }
-
-        return true;
-    } catch {
-        return true;
-    }
-}
-
-// ─── Cleanup ──────────────────────────────────────────────────────────────────
-
-// Returns the number of files deleted.
-export async function cleanupOldFiles(
-    vault:      Vault,
-    app:        App,
-    folderPath: string,
-    value:      number,
-    unit:       'minutes' | 'hours' | 'days' | 'months',
-    dateField:  'datepub' | 'datesaved' = 'datesaved',
-    settings?:  PluginSettings,
-    db?:        FeedDatabase
-): Promise<number> {
-    const cutoff           = Date.now() - toMilliseconds(value, unit);
-    const normalizedFolder = normalizePath(folderPath);
-    const folder           = vault.getAbstractFileByPath(normalizedFolder);
-
-    if (!folder) return 0;
-
-    const usePropertyCheck = settings?.autoCleanupCheckProperty ?? false;
-    const propertyName     = settings?.autoCleanupCheckPropertyName?.trim()
-                          || settings?.markAsReadCheckboxProperty?.trim()
-                          || 'Checkbox';
-
-    const ownDb   = !db;
-    db            = db ?? await loadFeedDatabase(app);
-    let dbChanged = false;
-    let deletedCount = 0;
-
-    const files = vault.getFiles().filter(f =>
-        f.path.startsWith(normalizedFolder + '/') &&
-        !f.path.endsWith('.feed-db.json')
-    );
-
-    for (const file of files) {
-        let fileTime: number;
-        if (dateField === 'datepub') {
-            const pubDate = await readPubDateFromFrontmatter(app, vault, file);
-            fileTime = pubDate ?? file.stat.ctime;
-        } else {
-            fileTime = file.stat.ctime;
-        }
-
-        if (fileTime >= cutoff) continue;
-
-        if (usePropertyCheck) {
-            const protected_ = await isFileProtected(vault, file, propertyName);
-            if (protected_) continue;
-        }
-
-        // Case-insensitive link lookup
-        let itemLink: string | null = null;
-        const fm = app.metadataCache.getFileCache(file)?.frontmatter;
-        if (fm) {
-            const key = Object.keys(fm).find(k => k.toLowerCase() === 'link');
-            if (key && fm[key]) itemLink = String(fm[key]).trim();
-        }
-        if (!itemLink) {
-            try {
-                const content          = await vault.cachedRead(file);
-                const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-                if (frontmatterMatch) {
-                    for (const line of (frontmatterMatch[1] ?? '').split('\n')) {
-                        const ci = line.indexOf(':');
-                        if (ci === -1) continue;
-                        if (line.slice(0, ci).trim().toLowerCase() === 'link') {
-                            itemLink = line.slice(ci + 1).trim().replace(/^["']|["']$/g, '') || null;
-                            break;
-                        }
-                    }
-                }
-            } catch { /* ignore */ }
-        }
-
-        try {
-            await vault.delete(file);
-            deletedCount++;
-
-            const dbKey = itemLink ?? file.name;
-            db[dbKey] = { link: dbKey, pubDate: '', status: 'deleted_cleanup' }; // force-overwrite saved status
-            dbChanged = true;
-        } catch (e) {
-            console.error(`RSS Cleanup: failed to delete ${file.path}`, e);
-        }
-    }
-
-    if (dbChanged && ownDb) {
-        await saveFeedDatabase(app, db);
-    }
-
-    return deletedCount;
-}
 
 // ─── Content image downloader ────────────────────────────────────────────────
 
@@ -438,7 +319,7 @@ async function downloadContentImages(
 
         try {
             // Use a hash of the URL as a stable filename to avoid duplicates
-            const hash     = url.split('').reduce((a, c) => (Math.imul(31, a) + c.charCodeAt(0)) | 0, 0);
+            const hash     = url.split('').reduce((a: number, c: string) => (Math.imul(31, a) + c.charCodeAt(0)) | 0, 0);
             const fileName = sanitizeFileName(`img-${Math.abs(hash)}`);
             const localPath = await downloadImageLocally(vault, url, imageFolder, fileName);
 
@@ -599,19 +480,11 @@ async function ensureFolder(vault: Vault, folderPath: string): Promise<void> {
     for (const part of parts) {
         currentPath = currentPath ? `${currentPath}/${part}` : part;
         if (!vault.getAbstractFileByPath(currentPath)) {
-            await vault.createFolder(currentPath);
+            try {
+                await vault.createFolder(currentPath);
+            } catch {
+                // Folder may have been created concurrently — ignore race condition.
+            }
         }
-    }
-}
-
-function toMilliseconds(value: number, unit: 'minutes' | 'hours' | 'days' | 'months'): number {
-    const minute = 60 * 1000;
-    const hour   = minute * 60;
-    const day    = hour * 24;
-    switch (unit) {
-        case 'minutes': return value * minute;
-        case 'hours':   return value * hour;
-        case 'days':    return value * day;
-        case 'months':  return value * day * 30;
     }
 }

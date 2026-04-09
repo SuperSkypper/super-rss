@@ -4,6 +4,7 @@ import { AddUrlModal }   from './settings/feedAdd';
 import { addFeed }       from './settings/feedAdd';
 import { updateFeed, updateAllFeeds } from './settings/feedUpdate';
 import { handleMarkAsRead, MARK_AS_READ_PROTOCOL } from './settings/feedMarkAsRead';
+import { loadAutoDatabase, saveAutoDatabase } from './settings/feedDatabase';
 
 // ─── Types & defaults (extracted to keep main.ts lean) ───────────────────────
 import { FeedConfig, PluginSettings, DEFAULT_SETTINGS } from './settings/settingsDefault';
@@ -89,33 +90,7 @@ export default class RssPlugin extends Plugin {
 
         this.setupAutoUpdate();
 
-        // ── Remove DB entry when user manually deletes an RSS file ────────────
-        // This allows the item to be re-fetched on the next update.
-        this.registerEvent(
-            this.app.vault.on('delete', async (file) => {
-                if (!file.path.endsWith('.md')) return;
 
-                const rssFolderPath = normalizePath(this.settings.folderPath);
-                if (!file.path.startsWith(rssFolderPath + '/')) return;
-
-                // Try to get the link from metadataCache before it's cleared
-                const fm = this.app.metadataCache.getFileCache(file as any)?.frontmatter;
-                let link: string | null = null;
-                if (fm) {
-                    const key = Object.keys(fm).find(k => k.toLowerCase() === 'link');
-                    if (key && fm[key]) link = String(fm[key]).trim();
-                }
-
-                if (!link) return;
-
-                const { loadFeedDatabase, saveFeedDatabase } = await import('./settings/feedDatabase');
-                const db = await loadFeedDatabase(this.app);
-                // Force overwrite — article may already be in DB as 'saved'
-                db[link] = { link, pubDate: db[link]?.pubDate ?? '', status: 'deleted_manual' };
-                await saveFeedDatabase(this.app, db);
-                console.log(`RSS: marked as deleted_manual (link: ${link})`);
-            })
-        );
     }
 
     onunload() {
@@ -136,6 +111,14 @@ export default class RssPlugin extends Plugin {
     clearStatusBar(): void {
         if (this.statusBarItem) {
             this.statusBarItem.style.display = 'none';
+        }
+    }
+
+    setStatusBarText(text: string, tooltip?: string): void {
+        if (this.settings.showStatusBar && this.statusBarItem) {
+            this.statusBarItem.style.display = '';
+            this.statusBarItem.setText(text);
+            this.statusBarItem.title = tooltip ?? text;
         }
     }
 
@@ -209,14 +192,20 @@ export default class RssPlugin extends Plugin {
         if (!this.isUpdating) return;
         this.isUpdating = false;
         this.clearStatusBar();
+
+        // Release the lock immediately so the next update is not blocked.
+        // updateAllFeeds also calls releaseLock in its finally block, but
+        // it may not run soon enough if the loop is between long async steps.
+        const { releaseLock } = await import('./settings/feedUpdate');
+        await releaseLock(this.app);
+
         new Notice('RSS: Update stopped.', 3000);
     }
 
     async updateFeed(feed: FeedConfig) {
-        const { loadFeedDatabase, saveFeedDatabase } = await import('./settings/feedDatabase');
-        const db = await loadFeedDatabase(this.app);
+        const db = await loadAutoDatabase(this.app);
         const result = await updateFeed(this.app, this, feed, db);
-        await saveFeedDatabase(this.app, db);
+        await saveAutoDatabase(this.app, db);
         return result;
     }
 
