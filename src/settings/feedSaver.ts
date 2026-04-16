@@ -3,9 +3,29 @@ import { FeedItem, FeedConfig, PluginSettings } from '../main';
 import { sanitizeFileName } from './feedProcessor';
 import { downloadImageLocally, resolveObsidianAttachmentPath } from './imageHandler';
 import { buildMarkAsReadLink } from './feedMarkAsRead';
-import { loadCombinedDatabase, loadAutoDatabase, loadUserDatabase, saveAutoDatabase, saveUserDatabase, registerAuto, registerOldArticle, isKnown, getStatus, AutoDatabase, UserDatabase } from './feedDatabase';
-import { cleanupOldFiles, deleteOrphanedDbArticles, toMilliseconds } from './feedDelete';
+import { loadCombinedDatabase, loadAutoDatabase, loadUserDatabase, saveAutoDatabase, saveUserDatabase, registerAuto, isKnown, getStatus, AutoDatabase, UserDatabase } from './feedDatabase';
+import { cleanupOldFiles, deleteOrphanedDbArticles } from './feedDelete';
 export { cleanupOldFiles, deleteOrphanedDbArticles } from './feedDelete';
+
+// ─── Database cleanup ─────────────────────────────────────────────────────────
+
+/**
+ * Removes all entries with status 'old_article' from the auto database.
+ * Call this once after migrating away from the pre-save date filter so that
+ * previously blocked articles can be re-imported on the next feed refresh.
+ */
+export async function cleanOldArticleEntries(app: App): Promise<number> {
+    const db = await loadAutoDatabase(app);
+    let removed = 0;
+    for (const link of Object.keys(db)) {
+        if (db[link]?.status === 'old_article') {
+            delete db[link];
+            removed++;
+        }
+    }
+    if (removed > 0) await saveAutoDatabase(app, db);
+    return removed;
+}
 import { injectDuplicateTag } from './feedDuplicate';
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
@@ -90,10 +110,15 @@ export async function saveFeedItem(
     db?:        AutoDatabase,
     userDb?:    UserDatabase
 ): Promise<boolean> {
+    // Capture the save timestamp once here so every applyTemplate call in this
+    // invocation uses exactly the same value — regardless of how long image
+    // downloads or other async work takes between calls.
+    const dateSaved = toLocalISOString(new Date());
+
     const feedName = feed.name || '';
 
     const fileNameTemplate = feed.titleTemplate || settings.fileNameTemplate || '{{title}}';
-    const rawFileName      = applyTemplate(fileNameTemplate, item, true, false, feedName);
+    const rawFileName      = applyTemplate(fileNameTemplate, item, true, false, feedName, dateSaved);
     const fileName         = sanitizeFileName(rawFileName) + '.md';
 
     const fullFolderPath = normalizePath(folderPath);
@@ -156,29 +181,6 @@ export async function saveFeedItem(
         }
     }
 
-    // ── Pre-save date filter ──────────────────────────────────────────────────
-    const cleanupValue     = feed.autoCleanupValue ?? settings.autoCleanupValue;
-    const cleanupUnit      = feed.autoCleanupUnit  ?? settings.autoCleanupUnit;
-    const feedDateField    = feed.autoCleanupDateField;
-    const cleanupDateField = (!feedDateField || feedDateField === 'global')
-        ? settings.autoCleanupDateField
-        : feedDateField;
-
-    if (cleanupValue > 0 && !settings.autoCleanupCheckProperty && item.pubDate) {
-        if (cleanupDateField === 'datepub') {
-            try {
-                const pubTime = Date.parse(item.pubDate);
-                const cutoff  = Date.now() - toMilliseconds(cleanupValue, cleanupUnit);
-                if (!isNaN(pubTime) && pubTime < cutoff) {
-                    const markAsReadMode = settings.markAsReadEnabled ?? false;
-                    await registerOldArticle(app, db, userDb, itemLink, item.pubDate, markAsReadMode);
-                    if (ownDb) await saveAutoDatabase(app, db);
-                    return false;
-                }
-            } catch { /* ignore */ }
-        }
-    }
-
     // ── Skip YouTube Shorts ───────────────────────────────────────────────────
     if (skipShortsEnabled && isYoutubeShort(item.link ?? '')) {
         registerAuto(db, itemLink, item.pubDate, 'skip_shorts');
@@ -224,7 +226,7 @@ export async function saveFeedItem(
 
     // ── Build frontmatter ─────────────────────────────────────────────────────
     const frontmatterTemplate  = feed.frontmatterTemplate || settings.frontmatterTemplate;
-    let   processedFrontmatter = applyTemplate(frontmatterTemplate, item, false, true, feedName);
+    let   processedFrontmatter = applyTemplate(frontmatterTemplate, item, false, true, feedName, dateSaved);
 
     if (shouldInjectShorts)  processedFrontmatter = injectShortsTag(processedFrontmatter);
     if (shouldInjectLive)    processedFrontmatter = injectLiveTag(processedFrontmatter);
@@ -235,7 +237,7 @@ export async function saveFeedItem(
     }
 
     const contentTemplate = feed.contentTemplate || settings.template;
-    const processedBody   = applyTemplate(contentTemplate, item, false, false, feedName);
+    const processedBody   = applyTemplate(contentTemplate, item, false, false, feedName, dateSaved);
 
     // ── Mark as Read frontmatter property ───────────────────────────────────
     // Injects the obsidian:// link into the frontmatter as a quoted string.
@@ -371,13 +373,19 @@ export function applyTemplate(
     item:       FeedItem,
     isFileName: boolean = false,
     isYaml:     boolean = false,
-    feedName:   string  = ''
+    feedName:   string  = '',
+    dateSaved?: string
 ): string {
     if (!template) return '';
 
     let result = prepareTemplate(template, item);
 
-    const dateSaved = toLocalISOString(new Date());
+    // Use the timestamp provided by the caller (captured once in saveFeedItem)
+    // so that all template calls within a single save operation share the exact
+    // same value. Fall back to now() only when called outside of saveFeedItem
+    // (e.g. preview rendering).
+    const resolvedDateSaved = dateSaved ?? toLocalISOString(new Date());
+
     let datePub = '';
     try {
         if (item.pubDate) {
@@ -454,7 +462,7 @@ export function applyTemplate(
         .replace(/{{snippet}}/g,    isYaml ? `"${escapeYamlValue(item.descriptionShort ?? item.description ?? '')}"` : String(item.descriptionShort ?? item.description ?? ''))
         .replace(/{{image}}/g,      imageValue)
         .replace(/{{datepub}}/g,    datePub)
-        .replace(/{{datesaved}}/g,  dateSaved)
+        .replace(/{{datesaved}}/g,  resolvedDateSaved)
         .replace(/{{content}}/g,    renderContent())
         .replace(/{{#tags}}/g,      tags);
 

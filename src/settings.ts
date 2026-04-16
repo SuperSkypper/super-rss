@@ -6,7 +6,7 @@ import { renderMyFeedsTab }        from './settings/settingsFeeds';
 import { renderOpmlTab }           from './settings/settingsOPML';
 import { AddUrlModal }             from './settings/feedAdd';
 import { addFeed }                 from './settings/feedAdd';
-import { cleanupOldFiles }         from './settings/feedSaver';
+import { cleanupOldFiles, cleanOldArticleEntries } from './settings/feedSaver';
 import { deleteOrphanedDbArticles } from './settings/feedDelete';
 import { tagDuplicatesInVault }    from './settings/feedDuplicate';
 
@@ -115,6 +115,17 @@ export class RssSettingTab extends PluginSettingTab {
             this.app,
             this.plugin.settings.folderPath
         );
+
+        // Remove any residual old_article entries from the auto database
+        // now that the pre-save date filter has been removed.
+        try {
+            const removed = await cleanOldArticleEntries(this.app);
+            if (removed > 0) {
+                console.log(`RSS Cleanup: removed ${removed} old_article entries from database.`);
+            }
+        } catch (e) {
+            console.error('RSS: cleanOldArticleEntries failed:', e);
+        }
 
         // ── Tag and delete duplicates ─────────────────────────────────────────
         try {

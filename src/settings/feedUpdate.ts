@@ -19,11 +19,6 @@ interface LockData {
     startedAt:  number;
 }
 
-function parsePubDate(date?: string): number | null {
-    if (!date) return null;
-    const ts = Date.parse(date);
-    return Number.isFinite(ts) ? ts : null;
-}
 
 function getLockPath(app: App): string {
     return normalizePath(`${app.vault.configDir}/plugins/${PLUGIN_ID}/${LOCK_FILE}`);
@@ -75,10 +70,6 @@ export async function releaseLock(app: App): Promise<void> {
     }
 }
 
-// ── Delete live articles for a feed ──────────────────────────────────────────
-
-// deleteLiveArticlesForFeed is imported from feedDelete.ts
-
 // ── Update a single feed ──────────────────────────────────────────────────────
 
 export async function updateFeed(
@@ -89,27 +80,18 @@ export async function updateFeed(
 ): Promise<{ saved: number; deleted: number }> {
     let saved   = 0;
     let deleted = 0;
+
     try {
         const raw = await fetchAndExtract(feed.url);
         if (!raw || !raw.items) return { saved, deleted };
 
         const isYoutubeFeed = /youtube\.com|youtu\.be/.test(feed.url);
 
-        // ── Early filter by lastUpdated ────────────────────────────────────────
-        const lastUpdatedBoundary = typeof feed.lastUpdated === 'number' ? feed.lastUpdated : null;
-        const filteredRawItems = lastUpdatedBoundary !== null
-            ? raw.items.filter(item => {
-                const itemPubTime = parsePubDate(item.pubDate);
-                return itemPubTime === null || itemPubTime > lastUpdatedBoundary;
-            })
-            : raw.items;
-
-        // ── Fetch YouTube durations only for filtered items ───────────────────
-        if (isYoutubeFeed && filteredRawItems.length > 0) {
-            // Limit concurrency to avoid overwhelming the network
+        // YouTube-specific metadata enrichment
+        if (isYoutubeFeed && raw.items.length > 0) {
             const BATCH_SIZE = 5;
-            for (let i = 0; i < filteredRawItems.length; i += BATCH_SIZE) {
-                const batch = filteredRawItems.slice(i, i + BATCH_SIZE);
+            for (let i = 0; i < raw.items.length; i += BATCH_SIZE) {
+                const batch = raw.items.slice(i, i + BATCH_SIZE);
                 await Promise.all(
                     batch.map(async rawItem => {
                         const link =
@@ -122,12 +104,8 @@ export async function updateFeed(
                     })
                 );
             }
-        }
-
-        // ── Upgrade YouTube thumbnails on filtered raw items ──────────────────
-        if (isYoutubeFeed && filteredRawItems.length > 0) {
             await Promise.all(
-                filteredRawItems.map(async rawItem => {
+                raw.items.map(async rawItem => {
                     if (rawItem.imageUrl) {
                         rawItem.imageUrl = await upgradeYoutubeThumbnail(rawItem.imageUrl);
                     }
@@ -135,23 +113,16 @@ export async function updateFeed(
             );
         }
 
-        const items              = processItems(filteredRawItems);
+        const items              = processItems(raw.items);
         const absoluteFolderPath = resolveFeedPath(feed, plugin.settings);
-
-        // ── Load userDb once per feed update ───────────────────────────────────
-        const userDb = await loadUserDatabase(app);
+        const userDb             = await loadUserDatabase(app);
 
         for (const item of items) {
+            // Non-YouTube (standard blog/RSS) logic
             if (!isYoutubeFeed) {
-                // Skip network-heavy steps for items already in the blacklist DB —
-                // saveFeedItem will discard them anyway, so Defuddle/OG fetches
-                // would be wasted I/O. Items not in the DB still need the vault
-                // existence check, but that happens inside saveFeedItem.
                 const isBlacklisted = !!item.link && isKnown(db, item.link);
 
                 if (!isBlacklisted) {
-                    // Skip network-heavy steps if the file already exists in the vault —
-                    // saveFeedItem will block it anyway via the vault dedup check.
                     const fileNameTemplate = feed.titleTemplate || plugin.settings.fileNameTemplate || '{{title}}';
                     const rawFileName      = applyTemplate(fileNameTemplate, item, true, false, feed.name || '');
                     const fileName         = sanitizeFileName(rawFileName) + '.md';
@@ -159,17 +130,10 @@ export async function updateFeed(
                     const fileExists       = await app.vault.adapter.exists(filePath);
 
                     if (!fileExists) {
-                        // ── Fetch full content via Defuddle ───────────────────────────
-                        // defuddle/full always returns clean Markdown — no HTML pipeline needed.
                         if (item.link) {
                             const full = await fetchFullContent(item.link);
-                            if (full?.content) {
-                                item.content = full.content;
-                            }
+                            if (full?.content) item.content = full.content;
                         }
-
-                        // ── Fallback image extraction via OpenGraph ────────────────────
-                        // If the feed XML had no image, fetch og:image / twitter:image from the page.
                         if (!item.imageUrl && item.link) {
                             item.imageUrl = await extractImageUrl({}, item.link);
                         }
@@ -187,25 +151,21 @@ export async function updateFeed(
                 db,
                 userDb
             );
-            if (isSaved) saved++;
+
+            if (isSaved) {
+                saved++;
+            }
         }
 
-        feed.lastUpdated = Date.now();
-        await plugin.saveSettingsSilent();
         if (saved > 0) {
             console.log(`RSS: Saved ${saved} new items for ${feed.name}`);
         }
 
-        // ── Delete live articles ──────────────────────────────────────────────
         if (feed.deleteLives) {
             deleted += await deleteLiveArticlesForFeed(app, absoluteFolderPath, db);
-            // Save immediately — deleteLiveArticlesForFeed mutates db in place
-            // but doesn't save. If cleanupOldFiles throws below, these entries
-            // would be lost without this save.
             if (deleted > 0) await saveAutoDatabase(app, db);
         }
 
-        // ── Cleanup old files ─────────────────────────────────────────────────
         const cleanupValue     = feed.autoCleanupValue ?? plugin.settings.autoCleanupValue;
         const cleanupUnit      = feed.autoCleanupUnit  ?? plugin.settings.autoCleanupUnit;
         const feedDateField    = feed.autoCleanupDateField;
@@ -213,16 +173,11 @@ export async function updateFeed(
             ? plugin.settings.autoCleanupDateField
             : feedDateField;
 
-        if (feed.autoCleanupValue != null && feed.autoCleanupValue > 0) {
+        if (cleanupValue != null && cleanupValue > 0) {
             deleted += await cleanupOldFiles(
-                app.vault,
-                app,
-                absoluteFolderPath,
-                cleanupValue,
-                cleanupUnit,
-                cleanupDateField,
-                plugin.settings,
-                db
+                app.vault, app, absoluteFolderPath,
+                cleanupValue, cleanupUnit, cleanupDateField,
+                plugin.settings, db
             );
         }
 
@@ -242,7 +197,7 @@ export async function updateAllFeeds(
     plugin: RssPlugin,
 ): Promise<void> {
     if (!plugin.settings.pluginEnabled) {
-        new Notice('Plugin is disabled. Enable it in General settings first.', 4000);
+        new Notice('Plugin is disabled.', 4000);
         return;
     }
 
@@ -250,7 +205,7 @@ export async function updateAllFeeds(
 
     const lockAcquired = await acquireLock(app);
     if (!lockAcquired) {
-        new Notice('RSS: Another instance is already updating. Skipping.', 4000);
+        new Notice('RSS: Update already in progress.', 4000);
         return;
     }
 
@@ -258,57 +213,43 @@ export async function updateAllFeeds(
 
     try {
         const enabledFeeds = plugin.settings.feeds.filter(f => f.enabled && f.url && !f.deleted);
-
-        if (enabledFeeds.length === 0) {
-            new Notice('No active feeds to update.');
-            return;
-        }
+        if (enabledFeeds.length === 0) return;
 
         const total = enabledFeeds.length;
-
         if (plugin.settings.showProgressNotice) {
-            new Notice(`Updating ${total} feed${total !== 1 ? 's' : ''}...`, 3000);
+            new Notice(`Updating ${total} feeds...`, 3000);
         }
 
         let totalSaved   = 0;
         let totalDeleted = 0;
-
         const db = await loadAutoDatabase(app);
 
         for (let i = 0; i < total; i++) {
             if (!plugin.isUpdating) break;
-
             const feed = enabledFeeds[i];
             if (!feed) continue;
 
             plugin.setStatusBar(i + 1, total, feed.name || feed.url);
-
             const { saved, deleted } = await updateFeed(app, plugin, feed, db);
             totalSaved   += saved;
             totalDeleted += deleted;
         }
 
-        // ── Global cleanup + orphan pass ─────────────────────────────────────
         if (plugin.isUpdating) {
             try {
                 totalDeleted += await runAutoCleanup(app, plugin, db);
-            } catch (cleanupError) {
-                console.error('RSS: auto cleanup failed:', cleanupError);
+            } catch (e) {
+                console.error('RSS: cleanup failed:', e);
             }
-        }
-
-        plugin.clearStatusBar();
-
-        // ── Tag duplicates retroactively ──────────────────────────────────────
-        if (plugin.isUpdating) {
             try {
                 await tagDuplicatesInVault(app, plugin);
             } catch (e) {
-                console.error('RSS: tagDuplicatesInVault failed:', e);
+                console.error('RSS: duplicate tagging failed:', e);
             }
+            plugin.showSummary(totalSaved, totalDeleted);
         }
 
-        if (plugin.isUpdating) plugin.showSummary(totalSaved, totalDeleted);
+        plugin.clearStatusBar();
 
     } finally {
         plugin.isUpdating = false;

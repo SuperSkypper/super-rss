@@ -2,17 +2,6 @@ import { App, normalizePath } from 'obsidian';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-/**
- * Statuses stored in feed-database-auto.json (plugin-driven, automatic):
- *   skip_shorts  — skipped because it is a YouTube Short
- *   skip_live    — skipped because it is a live stream
- *   old_article  — filtered out or deleted by the age-cleanup pipeline
- *
- * Statuses stored in feed-database-user.json (user-driven):
- *   mark_as_read — article was explicitly read/deleted by the user,
- *                  OR old_article promoted here when markAsRead is enabled
- *                  (so the user retains control over re-importing it later).
- */
 export type AutoArticleStatus = 'skip_shorts' | 'skip_live' | 'old_article';
 export type UserArticleStatus = 'mark_as_read';
 export type ArticleStatus     = AutoArticleStatus | UserArticleStatus;
@@ -32,22 +21,23 @@ export interface UserDatabase {
     [link: string]: ArticleEntry;
 }
 
-/**
- * Combined view of auto + user databases.
- * Auto DB entries take precedence — they carry more specific skip reasons.
- */
-export type FeedDatabase = AutoDatabase;
+export type FeedDatabase = Record<string, ArticleEntry>;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const PLUGIN_ID    = 'super-rss';
-const AUTO_DB_FILE = 'feed-database-auto.json';
-const USER_DB_FILE = 'feed-database-user.json';
+const PLUGIN_ID = 'super-rss';
+const AUTO_DB_FILE = 'feed-database-auto.json';   // apenas para migração
+const USER_DB_FILE = 'feed-database-user.json';   // apenas para migração
+const DB_FILE      = 'feed-database.jsonl';       // arquivo único
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
 function getPluginFolderPath(app: App): string {
     return normalizePath(`${app.vault.configDir}/plugins/${PLUGIN_ID}`);
+}
+
+function getDbPath(app: App): string {
+    return normalizePath(`${getPluginFolderPath(app)}/${DB_FILE}`);
 }
 
 function getAutoDbPath(app: App): string {
@@ -58,7 +48,7 @@ function getUserDbPath(app: App): string {
     return normalizePath(`${getPluginFolderPath(app)}/${USER_DB_FILE}`);
 }
 
-// ─── Ensure folder exists ─────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function ensurePluginFolder(app: App): Promise<void> {
     const folderPath = getPluginFolderPath(app);
@@ -67,7 +57,15 @@ async function ensurePluginFolder(app: App): Promise<void> {
     }
 }
 
-// ─── Low-level read ───────────────────────────────────────────────────────────
+async function appendLine(app: App, path: string, line: string): Promise<void> {
+    await ensurePluginFolder(app);
+    try {
+        await app.vault.adapter.append(path, line + '\n');
+    } catch (e) {
+        console.warn('RSS: Append failed, falling back to write', e);
+        await app.vault.adapter.write(path, line + '\n');
+    }
+}
 
 async function readJsonFile<T extends object>(app: App, path: string): Promise<T> {
     try {
@@ -75,305 +73,200 @@ async function readJsonFile<T extends object>(app: App, path: string): Promise<T
             const raw = await app.vault.adapter.read(path);
             return JSON.parse(raw) as T;
         }
-    } catch {
-        // Corrupted or missing — return empty object
-    }
+    } catch {}
     return {} as T;
 }
 
-// ─── Status mapping from legacy to new ───────────────────────────────────────
+async function loadJsonL(app: App, path: string): Promise<Record<string, ArticleEntry>> {
+    const db: Record<string, ArticleEntry> = {};
+    try {
+        if (!(await app.vault.adapter.exists(path))) return db;
 
-/**
- * Maps old ArticleStatus values (from feed-database.json,
- * feed-database-auto.json, and feed-database-user.json) to the new ones.
- *
- * Rules:
- *   deleted_skip_shorts → skip_shorts  (auto)
- *   deleted_skip_live   → skip_live    (auto)
- *   deleted_cleanup     → old_article  (auto)
- *   deleted_pre_filter  → old_article  (auto)
- *   deleted_manual      → mark_as_read (user)
- *   saved               → dropped (vault file existence is the source of truth)
- *
- * Returns null for statuses that should be dropped.
- */
-function mapLegacyStatus(status: string): { newStatus: ArticleStatus; target: 'auto' | 'user' } | null {
-    switch (status) {
-        case 'deleted_skip_shorts': return { newStatus: 'skip_shorts',  target: 'auto' };
-        case 'deleted_skip_live':   return { newStatus: 'skip_live',    target: 'auto' };
-        case 'deleted_cleanup':     return { newStatus: 'old_article',  target: 'auto' };
-        case 'deleted_pre_filter':  return { newStatus: 'old_article',  target: 'auto' };
-        case 'deleted_manual':      return { newStatus: 'mark_as_read', target: 'user' };
-        case 'saved':               return null; // vault is the source of truth
-        // Already-migrated statuses — keep as-is in correct target
-        case 'skip_shorts':         return { newStatus: 'skip_shorts',  target: 'auto' };
-        case 'skip_live':           return { newStatus: 'skip_live',    target: 'auto' };
-        case 'old_article':         return { newStatus: 'old_article',  target: 'auto' };
-        case 'mark_as_read':        return { newStatus: 'mark_as_read', target: 'user' };
-        default:                    return null;
-    }
-}
+        const content = await app.vault.adapter.read(path);
+        const lines = content.split('\n').filter(l => l.trim().length > 0);
 
-// ─── Migration ────────────────────────────────────────────────────────────────
-
-/**
- * In-memory flag so migration only performs I/O once per plugin session.
- */
-let _migrationDone = false;
-
-/**
- * Migrates legacy database files to the new status schema.
- *
- * Sources migrated (in order):
- *   1. feed-database.json       (original monolithic DB)
- *   2. feed-database-auto.json  (old auto DB, may contain old status strings)
- *   3. feed-database-user.json  (old user DB, may contain old status strings)
- *
- * For each source file that exists:
- *   - A .bak copy is written alongside it (e.g. feed-database-auto.json.bak).
- *   - All entries are re-mapped to the new status values and target DB.
- *   - The source file is replaced with the migrated, canonical version.
- *   - Entries already present in the target DB are never overwritten.
- *
- * After migration the two canonical files contain only new-schema entries.
- */
-async function migrateAllDatabases(app: App): Promise<void> {
-    if (_migrationDone) return;
-    _migrationDone = true; // set early so errors don't trigger infinite retries
-
-    await ensurePluginFolder(app);
-    const pluginFolder = getPluginFolderPath(app);
-
-    // Files to migrate, in priority order.
-    // Later sources fill gaps left by earlier ones (never overwrite).
-    const sources: { file: string; path: string }[] = [
-        { file: 'feed-database.json',      path: normalizePath(`${pluginFolder}/feed-database.json`) },
-        { file: AUTO_DB_FILE,              path: getAutoDbPath(app) },
-        { file: USER_DB_FILE,              path: getUserDbPath(app) },
-    ];
-
-    const newAutoDb: AutoDatabase = {};
-    const newUserDb: UserDatabase = {};
-
-    for (const source of sources) {
-        if (!(await app.vault.adapter.exists(source.path))) continue;
-
-        let raw: Record<string, any> = {};
-        try {
-            const text = await app.vault.adapter.read(source.path);
-            raw = JSON.parse(text);
-        } catch {
-            console.warn(`RSS migration: could not parse ${source.file}, skipping.`);
-            continue;
-        }
-
-        // Write .bak before touching the file
-        const bakPath = normalizePath(`${source.path}.bak`);
-        try {
-            await app.vault.adapter.write(bakPath, JSON.stringify(raw, null, 2));
-            console.log(`RSS migration: backed up ${source.file} → ${source.file}.bak`);
-        } catch (e) {
-            console.warn(`RSS migration: could not write backup for ${source.file}`, e);
-        }
-
-        let migratedAuto = 0;
-        let migratedUser = 0;
-
-        for (const [link, entry] of Object.entries(raw)) {
-            if (!entry || !entry.status) continue;
-
-            const mapped = mapLegacyStatus(entry.status as string);
-            if (!mapped) continue; // 'saved' or unknown — drop
-
-            const migratedEntry: ArticleEntry = {
-                link,
-                pubDate: entry.pubDate ?? '',
-                status:  mapped.newStatus,
-                ts:      entry.ts ?? 0,
-            };
-
-            if (mapped.target === 'auto') {
-                if (link in newAutoDb) continue; // first-seen wins
-                newAutoDb[link] = migratedEntry;
-                migratedAuto++;
-            } else {
-                if (link in newUserDb) continue;
-                newUserDb[link] = migratedEntry;
-                migratedUser++;
+        for (const line of lines) {
+            try {
+                const entry = JSON.parse(line) as ArticleEntry;
+                if (entry.link) db[entry.link] = entry;
+            } catch (e) {
+                console.warn('RSS: Skipping corrupted line', e);
             }
         }
-
-        console.log(`RSS migration: ${source.file} → auto: +${migratedAuto}, user: +${migratedUser}`);
-    }
-
-    // Write the canonical migrated files
-    try {
-        await app.vault.adapter.write(getAutoDbPath(app), JSON.stringify(newAutoDb, null, 2));
-        await app.vault.adapter.write(getUserDbPath(app), JSON.stringify(newUserDb, null, 2));
-        console.log('RSS migration: complete. New auto entries:', Object.keys(newAutoDb).length,
-                    '| New user entries:', Object.keys(newUserDb).length);
     } catch (e) {
-        console.error('RSS migration: failed to write migrated databases.', e);
+        console.error(`RSS: Failed to load ${path}`, e);
     }
+    return db;
 }
 
-/**
- * Returns true if any of the source files contain a legacy status string,
- * meaning a migration pass is needed.
- */
-async function needsMigration(app: App): Promise<boolean> {
-    const LEGACY_STATUSES = new Set([
-        'saved', 'deleted_cleanup', 'deleted_skip_shorts',
-        'deleted_skip_live', 'deleted_pre_filter', 'deleted_manual',
+// ─── Migração automática ─────────────────────────────────────────────────────
+
+async function migrateLegacyJsonToJsonL(app: App): Promise<FeedDatabase> {
+    const dbPath = getDbPath(app);
+    if (await app.vault.adapter.exists(dbPath)) return {};
+
+    const autoPath = getAutoDbPath(app);
+    const userPath = getUserDbPath(app);
+
+    const [autoExists, userExists] = await Promise.all([
+        app.vault.adapter.exists(autoPath),
+        app.vault.adapter.exists(userPath)
     ]);
 
-    const pluginFolder = getPluginFolderPath(app);
-    const paths = [
-        normalizePath(`${pluginFolder}/feed-database.json`),
-        getAutoDbPath(app),
-        getUserDbPath(app),
-    ];
+    if (!autoExists && !userExists) return {};
 
-    for (const p of paths) {
-        if (!(await app.vault.adapter.exists(p))) continue;
-        try {
-            const raw = JSON.parse(await app.vault.adapter.read(p));
-            for (const entry of Object.values(raw) as any[]) {
-                if (entry?.status && LEGACY_STATUSES.has(entry.status)) return true;
-            }
-        } catch { /* ignore parse errors */ }
-    }
+    console.log('RSS: Migrando bancos antigos para o novo feed-database.jsonl...');
 
-    return false;
+    const [autoDb, userDb] = await Promise.all([
+        autoExists ? readJsonFile<AutoDatabase>(app, autoPath) : {},
+        userExists ? readJsonFile<UserDatabase>(app, userPath) : {},
+    ]);
+
+    const combined = { ...userDb, ...autoDb };
+
+    const content = Object.values(combined)
+        .map(entry => JSON.stringify(entry))
+        .join('\n');
+
+    await ensurePluginFolder(app);
+    await app.vault.adapter.write(dbPath, content ? content + '\n' : '');
+
+    console.log(`RSS: Migração concluída com ${Object.keys(combined).length} entradas.`);
+    console.log('RSS: Arquivos antigos mantidos (pode apagar manualmente depois).');
+
+    return combined;
 }
 
-/**
- * Entry point called by all public read functions.
- * Runs the migration once per session if legacy status strings are detected.
- */
-async function ensureMigrated(app: App): Promise<void> {
-    if (_migrationDone) return;
-    if (await needsMigration(app)) {
-        await migrateAllDatabases(app);
-    } else {
-        _migrationDone = true;
-    }
-}
+// ─── Public Read API ──────────────────────────────────────────────────────────
 
-// ─── Public read API ──────────────────────────────────────────────────────────
+export async function loadDatabase(app: App): Promise<FeedDatabase> {
+    let db = await loadJsonL(app, getDbPath(app));
+
+    if (Object.keys(db).length === 0) {
+        db = await migrateLegacyJsonToJsonL(app);
+    }
+
+    return db;
+}
 
 export async function loadAutoDatabase(app: App): Promise<AutoDatabase> {
-    await ensureMigrated(app);
-    return readJsonFile<AutoDatabase>(app, getAutoDbPath(app));
+    const full = await loadDatabase(app);
+    const auto: AutoDatabase = {};
+    for (const [k, v] of Object.entries(full)) {
+        if (v.status !== 'mark_as_read') auto[k] = v;
+    }
+    return auto;
 }
 
 export async function loadUserDatabase(app: App): Promise<UserDatabase> {
-    await ensureMigrated(app);
-    return readJsonFile<UserDatabase>(app, getUserDbPath(app));
-}
-
-/**
- * Loads a combined view of auto + user databases.
- * Auto DB entries take precedence — they carry more specific skip reasons.
- */
-export async function loadCombinedDatabase(app: App): Promise<FeedDatabase> {
-    await ensureMigrated(app);
-    const [autoDb, userDb] = await Promise.all([
-        readJsonFile<AutoDatabase>(app, getAutoDbPath(app)),
-        readJsonFile<UserDatabase>(app, getUserDbPath(app)),
-    ]);
-    return { ...userDb, ...autoDb };
-}
-
-/** Alias kept for backward compatibility with callers using loadFeedDatabase. */
-export const loadFeedDatabase = loadCombinedDatabase;
-
-// ─── Public write API ─────────────────────────────────────────────────────────
-
-export async function saveAutoDatabase(app: App, db: AutoDatabase): Promise<void> {
-    try {
-        await ensurePluginFolder(app);
-        await app.vault.adapter.write(getAutoDbPath(app), JSON.stringify(db, null, 2));
-    } catch (e) {
-        console.error('RSS: failed to save feed-database-auto.json', e);
+    const full = await loadDatabase(app);
+    const user: UserDatabase = {};
+    for (const [k, v] of Object.entries(full)) {
+        if (v.status === 'mark_as_read') user[k] = v;
     }
+    return user;
 }
 
-export async function saveUserDatabase(app: App, db: UserDatabase): Promise<void> {
-    try {
-        await ensurePluginFolder(app);
-        await app.vault.adapter.write(getUserDbPath(app), JSON.stringify(db, null, 2));
-    } catch (e) {
-        console.error('RSS: failed to save feed-database-user.json', e);
+export const loadCombinedDatabase = loadDatabase;
+export const loadFeedDatabase = loadDatabase;
+
+// ─── Public Write API ─────────────────────────────────────────────────────────
+
+export async function saveAutoDatabase(app: App, autoDb: AutoDatabase): Promise<void> {
+    const fullDb = await loadDatabase(app);
+
+    // Remove entradas antigas do tipo auto
+    for (const [link, entry] of Object.entries(fullDb)) {
+        if (entry.status !== 'mark_as_read') {
+            delete fullDb[link];
+        }
     }
+
+    Object.assign(fullDb, autoDb);
+
+    const content = Object.values(fullDb)
+        .map(e => JSON.stringify(e))
+        .join('\n');
+
+    await ensurePluginFolder(app);
+    await app.vault.adapter.write(getDbPath(app), content ? content + '\n' : '');
 }
 
-/** Alias kept for backward compatibility with callers using saveFeedDatabase. */
+export async function saveUserDatabase(app: App, userDb: UserDatabase): Promise<void> {
+    const fullDb = await loadDatabase(app);
+
+    // Remove entradas antigas do tipo user
+    for (const [link, entry] of Object.entries(fullDb)) {
+        if (entry.status === 'mark_as_read') {
+            delete fullDb[link];
+        }
+    }
+
+    Object.assign(fullDb, userDb);
+
+    const content = Object.values(fullDb)
+        .map(e => JSON.stringify(e))
+        .join('\n');
+
+    await ensurePluginFolder(app);
+    await app.vault.adapter.write(getDbPath(app), content ? content + '\n' : '');
+}
+
 export const saveFeedDatabase = saveAutoDatabase;
 
-// ─── Write helpers ────────────────────────────────────────────────────────────
+// ─── Register functions (append-only) ─────────────────────────────────────────
 
-/**
- * Registers an article in the auto DB (plugin-driven, automatic actions).
- * Never overwrites an existing entry.
- *
- * Use for: skip_shorts, skip_live, old_article.
- */
 export function registerAuto(
-    db:      AutoDatabase,
-    link:    string,
+    db: AutoDatabase,
+    link: string,
     pubDate: string,
-    status:  AutoArticleStatus,
+    status: AutoArticleStatus,
 ): void {
     if (link in db) return;
     db[link] = { link, pubDate, status, ts: Date.now() };
 }
 
-/**
- * Registers an old article in the correct database depending on whether the
- * "Mark as Read" feature is enabled.
- *
- * - markAsRead disabled → auto DB as 'old_article'  (plugin-managed)
- * - markAsRead enabled  → user DB as 'mark_as_read' (user retains control)
- *
- * When routing to the user DB the entry is persisted immediately so it is
- * never lost if the process is interrupted.
- */
 export async function registerOldArticle(
-    app:            App,
-    autoDb:         AutoDatabase,
-    userDb:         UserDatabase,
-    link:           string,
-    pubDate:        string,
+    app: App,
+    autoDb: AutoDatabase,
+    userDb: UserDatabase,
+    link: string,
+    pubDate: string,
     markAsReadMode: boolean,
 ): Promise<void> {
     if (link in autoDb || link in userDb) return;
 
-    if (markAsReadMode) {
-        userDb[link] = { link, pubDate, status: 'mark_as_read', ts: Date.now() };
-        await saveUserDatabase(app, userDb);
-    } else {
-        autoDb[link] = { link, pubDate, status: 'old_article', ts: Date.now() };
-    }
+    const entry: ArticleEntry = {
+        link,
+        pubDate,
+        status: markAsReadMode ? 'mark_as_read' : 'old_article',
+        ts: Date.now()
+    };
+
+    if (markAsReadMode) userDb[link] = entry;
+    else autoDb[link] = entry;
+
+    await appendLine(app, getDbPath(app), JSON.stringify(entry));
 }
 
-/**
- * Registers a manual read/deletion in the user DB and persists immediately.
- * Called when the user explicitly marks an article as read or deletes it.
- * Never overwrites an existing entry.
- */
 export async function registerManualRead(
-    app:     App,
-    db:      UserDatabase,
-    link:    string,
+    app: App,
+    db: UserDatabase,
+    link: string,
     pubDate: string,
 ): Promise<void> {
     if (link in db) return;
-    db[link] = { link, pubDate, status: 'mark_as_read', ts: Date.now() };
-    await saveUserDatabase(app, db);
+
+    const entry: ArticleEntry = {
+        link,
+        pubDate,
+        status: 'mark_as_read',
+        ts: Date.now()
+    };
+
+    db[link] = entry;
+    await appendLine(app, getDbPath(app), JSON.stringify(entry));
 }
-
-
 
 // ─── Status checks ────────────────────────────────────────────────────────────
 
