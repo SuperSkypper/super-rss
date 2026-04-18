@@ -1,86 +1,68 @@
 # Super RSS
 
-A powerful RSS reader plugin for [Obsidian](https://obsidian.md). Automatically saves feed articles as notes with customizable templates, image downloading, auto-cleanup, and Mark as Read support.
+A powerful, high-performance RSS reader plugin for [Obsidian](https://obsidian.md). Automatically transform your favorite feeds into personal notes with total control over templates, images, and organization.
 
-## Features
+## 🚀 Key Features
 
-- **Feed management** — Add, edit, and organize RSS/Atom feeds into groups
-- **Customizable templates** — Control frontmatter, content body, and file name via template variables
-- **Image downloading** — Optionally save article images locally to your vault
-- **YouTube support** — Fetches video duration, upgrades thumbnails to max resolution, tags Shorts and live streams
-- **Auto-cleanup** — Automatically delete old articles after a configurable time period
-- **Mark as Read** — Inject a clickable link as a frontmatter property; works with Obsidian Bases card view via a formula
-- **OPML import/export** — Migrate feeds from other RSS readers
-- **Per-feed overrides** — Most global settings can be overridden per feed
+- **Smart Feed Management** — Add, edit, and organize RSS/Atom/JSON feeds into collapsible **Groups**.
+- **Performance Engine (v0.0.4+)** — Blazing fast updates with minimal CPU usage thanks to advanced metadata caching.
+- **YouTube Intelligence** — Automatically upgrades thumbnails to **Max Resolution (4K)**, identifies and tags **Shorts**, and detects **Live Streams** with customizable keywords.
+- **Advanced Deduplication** — Real-time vault scanning to prevent duplicate notes, even across different folders.
+- **Granular Auto-Cleanup** — Automatically delete old articles based on `Published Date` or `Saved Date`. Use **Selective Preservation** to keep articles if a specific property (like "Read") is checked.
+- **Flexible Image Engine** — Download and save images locally to your vault (Obsidian default, Vault root, Feed folder, or custom path). Includes fallback scraping of OpenGraph/Twitter meta tags.
+- **Total Template Control** — Full control over filenames, frontmatter, and content body using a powerful variable system.
+- **Mark as Read Support** — Integrated link handler and checkbox support. Optionally **Delete on Mark as Read** for a clutter-free workflow.
+- **OPML Support** — Easy import/export to migrate from other RSS readers.
+- **Modern UX** — Real-time progress tracking in the **Status Bar** and customizable **Ribbon Icons**.
 
-## Installation
+## 🛠️ Usage & Commands
+
+| Action | Description |
+|---|---|
+| **Update All Feeds** | Manual trigger to refresh all your active feeds. |
+| **Add RSS Feed** | Quick modal to subscribe to a new URL. |
+| **Mark as Read** | Clickable URI handler to toggle read status in frontmatter. |
+| **Purge Database** | Advanced maintenance tools to clean up the internal RSS index. |
+
+## 📦 Installation
 
 ### Manual
-
 1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/SuperSkypper/super-rss/releases).
-2. Copy the files to your vault: `<Vault>/.obsidian/plugins/super-rss/`
-3. Reload Obsidian and enable **Super RSS** in **Settings → Community plugins**.
+2. Create the folder: `<Vault>/.obsidian/plugins/super-rss/`
+3. Copy the files into that folder.
+4. Reload Obsidian and enable **Super RSS** in **Settings → Community plugins**.
 
-### Community plugin list
+## 📖 Template Variables
 
-Coming soon.
+Every part of your note can be customized using these variables:
 
-## Getting started
+| Variable | Description |
+|---|---|
+| `{{title}}` | Article title |
+| `{{author}}` | Author name |
+| `{{datepub}}` | Publication date from the feed |
+| `{{datesaved}}` | Current date/time when saved |
+| `{{snippet}}` | Short description or summary |
+| `{{feedname}}` | Name of the source feed |
+| `{{link}}` | Original article URL |
+| `{{image}}` | Embedded image (local or remote) |
+| `{{duration}}` | Video duration (YouTube only) |
+| `{{#tags}}` | Formatted tags from categories |
+| `{{content}}` | Full article content (Readability enhanced) |
 
-1. Open **Settings → Super RSS → General**.
-2. Set your **RSS Folder** path.
-3. Go to **My Feeds** and add your first feed.
-4. Configure your **Update Interval**.
-5. Review the **Global Template** if needed.
-6. Enable the plugin using the toggle at the top of General settings.
+---
 
-## Mark as Read (Obsidian Bases)
+## 🔗 YouTube Shorts & Live
+Super RSS can automatically tag or skip specific content formats. You can configure global or per-feed keywords to identify **Live Streams** (e.g., `live, stream, 🔴`) and decide if you want to include or ignore **Shorts**.
 
-Super RSS injects a clickable link as a frontmatter property on each article. To use it in Bases card view, create a formula column with the following:
+## 🎯 Advanced Cleanup
+Keep your vault lean by setting up auto-cleanup rules. You can define a threshold (e.g., 30 days) and specify if you want to check for a specific Obsidian property before deleting. This allows you to "Save" important articles simply by checking a box.
 
-\`\`\`
-link(
-  "obsidian://rss-mark-as-read?file=" + file.name.replace("&", "%26"),
-  if(Checkbox,
-    html("<span style='font-size:1.5em'>✅</span>"),
-    html("<span style='font-size:1.5em'>🟦</span>")
-  )
-)
-\`\`\`
-
-> Replace `Checkbox` with the property name configured in **Settings → Super RSS → General → Mark as Read → Checkbox Property Name**.
-
-You can also copy this formula directly from the plugin settings.
-
-## Template variables
-
-| Variable | Description | Scopes |
-|---|---|---|
-| `{{title}}` | Article title | filename, frontmatter, content |
-| `{{author}}` | Author | filename, frontmatter, content |
-| `{{datepub}}` | Date published | filename, frontmatter, content |
-| `{{datesaved}}` | Date saved | filename, frontmatter, content |
-| `{{snippet}}` | Short description | filename, frontmatter, content |
-| `{{feedname}}` | Feed name | filename, frontmatter, content |
-| `{{link}}` | Article URL | frontmatter, content |
-| `{{image}}` | Image link | frontmatter, content |
-| `{{duration}}` | Video duration (YouTube) | frontmatter, content |
-| `{{#tags}}` | Tags | frontmatter, content |
-| `{{content}}` | Full article content | content |
-
-## Development
-
-\`\`\`bash
-npm install
-npm run dev      # watch mode
-npm run build    # production build
-\`\`\`
+---
 
 ## Support
-
-- [Ko-fi](https://ko-fi.com/superskypper)
-- [X / Twitter](https://x.com/SuperSkypper)
+- [Support the project on Ko-fi](https://ko-fi.com/superskypper)
+- [Follow @SuperSkypper on X/Twitter](https://x.com/SuperSkypper)
 
 ## License
-
-MIT
+MIT License. See [LICENSE](LICENSE) for details.
