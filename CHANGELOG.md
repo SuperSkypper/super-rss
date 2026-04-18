@@ -1,16 +1,16 @@
 # Changelog - v0.0.4 (Pre-release)
 
-## 🚀 Novidades e Melhorias
-- **Modernização do Banco de Dados**: Refatoração completa do sistema de armazenamento do RSS para maior estabilidade. Removemos lógicas antigas de "tombstone" e otimizamos a gravação dos itens.
-- **Super Performance**: Implementação de um sistema de cache de metadados que reduz drasticamente o uso de CPU durante a atualização e limpeza dos feeds.
-- **Barra de Status Inteligente**: Agora você pode acompanhar em tempo real o progresso de salvamento, limpeza e verificação de duplicatas diretamente na barra de status do Obsidian.
-- **Configurações Reorganizadas**: A aba de Configurações Gerais foi redesenhada para ser mais intuitiva, agrupando logicamente as opções de Atualização Automática, Remoção Automática e Armazenamento.
-- **Deduplicação Veloz**: Substituímos escaneamentos redundantes no vault por buscas eficientes em memória ao marcar artigos duplicados.
+## 🚀 New Features & Improvements
+- **Database Modernization**: Complete refactor of the RSS storage system for better stability. Removed legacy "tombstone" logic and optimized item recording.
+- **Super Performance**: Implementation of a metadata caching system that drastically reduces CPU usage during updates and cleanup cycles.
+- **Smart Status Bar**: Real-time progress tracking for saving, cleaning, and duplicate checking directly in the Obsidian status bar.
+- **Reorganized Settings**: The General Settings tab has been redesigned to be more intuitive, logically grouping Auto-Update, Auto-Delete, and Storage options.
+- **Fast Deduplication**: Replaced redundant vault scans with efficient memory-based lookups when marking duplicate articles.
 
-## 🔧 Atualizações Técnicas
-- **Update de Dependência**: Atualização do `defuddle` para a versão `0.17.0`, melhorando a extração de conteúdo de artigos.
-- **Refatoração de Código**: Código mais limpo e modular, facilitando futuras manutenções e prevenindo bugs.
+## 🔧 Technical Updates
+- **Dependency Update**: Updated `defuddle` to version `0.17.0`, improving article content extraction.
+- **Code Refactoring**: Cleaner and more modular code, facilitating future maintenance and preventing bugs.
 
-## 🐞 Correções
-- Corrigido problema onde alguns itens de feed eram ignorados de forma inconsistente durante a importação.
-- Melhoria na lógica de datas para garantir que novos artigos não sejam perdidos.
+## 🐞 Bug Fixes
+- Fixed an issue where some feed items were inconsistently skipped during import.
+- Improved date logic to ensure new articles are not missed.
