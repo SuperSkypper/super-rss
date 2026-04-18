@@ -1,47 +1,70 @@
-# Super RSS
+# 📡 Super RSS
 
-An RSS reader plugin for [Obsidian](https://obsidian.md). It automatically saves articles from your feeds as notes in your vault.
+An Obsidian plugin that fetches RSS feeds and saves articles as notes in your vault.
 
-## What it does
+> Not yet available on the Community Plugins directory. Manual installation only.
 
-- **YouTube** - It finds the best quality thumbnail for the video. You can also tell it to skip YouTube Shorts or Live Streams.
-- **No Duplicates** - It checks your vault to make sure it doesn't save the same article twice, even if you move the files.
-- **Auto-Cleanup** - It can delete old articles after a few days. You can also set it to keep articles if they are marked with a specific property (like a "Read" checkbox).
-- **Images** - It can download images to your vault. If a feed doesn't have an image, it tries to find one from the original link.
-- **Groups** - You can organize your feeds into groups. If you rename a feed, the plugin can rename the folder for you.
-- **Templates** - You can change how the notes look and what information (like author, date, etc.) is included.
-- **Mark as Read** - Adds a link to your notes so you can mark them as read.
 
-## How to install
+## ✨ Features
+**📁 Feed organization**
+- Group feeds into collapsible folders
+- Folders rename automatically when feeds are moved or edited
 
+**🗒️ Note templates**
+- Control filename, frontmatter, and content using template variables (see table below)
+- Override global settings per feed (fetch interval, template, cleanup rules)
+
+**🔍 Deduplication**
+- Scans your entire rss folder before importing to avoid duplicate notes.
+- Tracks imported entries in a local database
+
+**🧹 Auto-cleanup**
+- Delete old notes automatically after a configurable period
+- Choose whether to measure age by publication date or saved date
+- Skip cleanup for notes that have a specific property checked.
+
+**✅ Mark as Read**
+- URI handler lets you mark items as read from within a note
+- Optional: delete the note automatically on mark as read
+
+**🖼️ Images**
+- Download images locally to your vault (default folder, feed folder, or a custom subfolder)
+- Falls back to scraping OpenGraph/Twitter meta tags if the feed doesn't include an image
+
+**▶️ YouTube**
+- Picks the highest available thumbnail resolution
+- Option to skip Shorts or live streams
+- Auto-tags items as `#shorts` or `#live` based on URL structure and configurable title keywords
+- Fetches video duration for YouTube links
+
+
+## 📦 Installation
 1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/SuperSkypper/super-rss/releases).
-2. Go to your vault folder: `.obsidian/plugins/`
-3. Create a folder named `super-rss` and put the files there.
-4. Open Obsidian and enable the plugin in **Settings → Community plugins**.
+2. Create the folder `<your vault>/.obsidian/plugins/super-rss/`.
+3. Copy the three files into that folder.
+4. Restart Obsidian and enable **Super RSS** under **Settings → Community plugins**.
 
-## Templates
+## 📖 Template Variables
 
-You can use these tags in your templates:
-
-| Tag | Description |
+| Variable | Value |
 |---|---|
 | `{{title}}` | Article title |
 | `{{author}}` | Author name |
-| `{{datepub}}` | Date it was published |
-| `{{datesaved}}` | Date it was saved to Obsidian |
-| `{{snippet}}` | Short summary |
-| `{{feedname}}` | Name of the feed |
-| `{{link}}` | Link to the original article |
-| `{{image}}` | Article image |
-| `{{duration}}` | Video length (YouTube) |
-| `{{#tags}}` | Tags from the feed |
-| `{{content}}` | The full article text |
+| `{{datepub}}` | Publication date from the feed |
+| `{{datesaved}}` | Date the note was created |
+| `{{snippet}}` | Short description or summary |
+| `{{feedname}}` | Name of the source feed |
+| `{{link}}` | Original article URL |
+| `{{image}}` | Local or remote image path |
+| `{{duration}}` | Video duration (YouTube only) |
+| `{{#tags}}` | Tags derived from feed categories |
+| `{{content}}` | Full article content |
 
----
+## 💬 Support
 
-## Support
-- [Support on Ko-fi](https://ko-fi.com/superskypper)
-- [Follow on X/Twitter](https://x.com/SuperSkypper)
+- [Ko-fi](https://ko-fi.com/superskypper)
+- [X / Twitter](https://x.com/SuperSkypper)
 
-## License
-MIT License.
+## 📄 License
+
+MIT — see [LICENSE](LICENSE).
