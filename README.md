@@ -4,25 +4,31 @@ A powerful, high-performance RSS reader plugin for [Obsidian](https://obsidian.m
 
 ## 🚀 Key Features
 
-- **Smart Feed Management** — Add, edit, and organize RSS/Atom/JSON feeds into collapsible **Groups**.
-- **Performance Engine (v0.0.4+)** — Blazing fast updates with minimal CPU usage thanks to advanced metadata caching.
-- **YouTube Intelligence** — Automatically upgrades thumbnails to **Max Resolution (4K)**, identifies and tags **Shorts**, and detects **Live Streams** with customizable keywords.
-- **Advanced Deduplication** — Real-time vault scanning to prevent duplicate notes, even across different folders.
-- **Granular Auto-Cleanup** — Automatically delete old articles based on `Published Date` or `Saved Date`. Use **Selective Preservation** to keep articles if a specific property (like "Read") is checked.
-- **Flexible Image Engine** — Download and save images locally to your vault (Obsidian default, Vault root, Feed folder, or custom path). Includes fallback scraping of OpenGraph/Twitter meta tags.
-- **Total Template Control** — Full control over filenames, frontmatter, and content body using a powerful variable system.
-- **Mark as Read Support** — Integrated link handler and checkbox support. Optionally **Delete on Mark as Read** for a clutter-free workflow.
-- **OPML Support** — Easy import/export to migrate from other RSS readers.
-- **Modern UX** — Real-time progress tracking in the **Status Bar** and customizable **Ribbon Icons**.
+### 📺 Smart YouTube Engine
+- **Quality Selection**: Automatically identifies and selects the highest available resolution for thumbnails (`MaxRes`, `720p`, etc.) for a premium visual experience.
+- **Content Filtering**: Pure flexibility to **Skip YouTube Shorts** or **Skip Live Streams** entirely, keeping your vault focused on long-form content.
+- **Intelligent Tagging**: Automatic detection and injection of `#shorts` or `#live` tags based on link structure and customizable title keywords (e.g., `live, stream, 🔴`).
+- **Time Tracking**: Automatically fetches video duration for YouTube links to help you manage your discovery.
 
-## 🛠️ Usage & Commands
+### 🛡️ Smart Deduplication & Sync
+- **Vault-Wide Scanning**: Automatically checks your existing notes to prevent duplicate imports, even if you move files across different folders.
+- **Performance Focused**: Powered by a new metadata caching engine (v0.0.4) for blazing-fast updates with minimal CPU impact.
+- **Database Refinement**: Modernized storage and entry tracking for a stable, append-only secondary database.
 
-| Action | Description |
-|---|---|
-| **Update All Feeds** | Manual trigger to refresh all your active feeds. |
-| **Add RSS Feed** | Quick modal to subscribe to a new URL. |
-| **Mark as Read** | Clickable URI handler to toggle read status in frontmatter. |
-| **Purge Database** | Advanced maintenance tools to clean up the internal RSS index. |
+### 🧹 Intelligent Auto-Cleanup
+- **Date-Based Rules**: Automatically delete old notes after a configurable time period, using either the `Published Date` or the `Saved Date`.
+- **Selective Preservation**: Never lose important research! Enable "Checkbox Detection" to skip cleanup for any note where a specific property (like `Read` or `Starred`) is checked.
+
+### 🖼️ High-End Image Engine
+- **Local Downloads**: Save images directly to your vault with support for Obsidian's default folder, feed folders, or specific subfolders.
+- **Meta-Image Scraper**: If a feed lacks an image, Super RSS automatically scrapes the source URL for OpenGraph and Twitter meta tags.
+- **High-Res Thumbnails**: Optimized for beautiful Gallery and Card views (like Obsidian Bases).
+
+### ⚙️ Total Customization
+- **Nested Organization**: Support for collapsible **Groups** and automatic folder renaming when feeds are moved or edited.
+- **Template Power**: Full control over Filenames, Frontmatter, and Content using a comprehensive variable system.
+- **Per-Feed Overrides**: Global settings too broad? Customize intervals, templates, and cleanup rules for each individual feed.
+- **Mark as Read**: Integrated URI handler for one-click status updates. Includes an optional **Delete on Mark as Read** mode.
 
 ## 📦 Installation
 
@@ -34,29 +40,19 @@ A powerful, high-performance RSS reader plugin for [Obsidian](https://obsidian.m
 
 ## 📖 Template Variables
 
-Every part of your note can be customized using these variables:
-
 | Variable | Description |
 |---|---|
 | `{{title}}` | Article title |
 | `{{author}}` | Author name |
-| `{{datepub}}` | Publication date from the feed |
-| `{{datesaved}}` | Current date/time when saved |
+| `{{datepub}}` | Publication date from the source |
+| `{{datesaved}}` | Date/time when the note was created |
 | `{{snippet}}` | Short description or summary |
 | `{{feedname}}` | Name of the source feed |
 | `{{link}}` | Original article URL |
-| `{{image}}` | Embedded image (local or remote) |
-| `{{duration}}` | Video duration (YouTube only) |
+| `{{image}}` | Local or remote image link |
+| `{{duration}}` | Video duration (YouTube) |
 | `{{#tags}}` | Formatted tags from categories |
 | `{{content}}` | Full article content (Readability enhanced) |
-
----
-
-## 🔗 YouTube Shorts & Live
-Super RSS can automatically tag or skip specific content formats. You can configure global or per-feed keywords to identify **Live Streams** (e.g., `live, stream, 🔴`) and decide if you want to include or ignore **Shorts**.
-
-## 🎯 Advanced Cleanup
-Keep your vault lean by setting up auto-cleanup rules. You can define a threshold (e.g., 30 days) and specify if you want to check for a specific Obsidian property before deleting. This allows you to "Save" important articles simply by checking a box.
 
 ---
 
