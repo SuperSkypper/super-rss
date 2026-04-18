@@ -1,10 +1,11 @@
-import { Setting, Modal, App } from 'obsidian';
+import { Setting, Modal, App, Notice } from 'obsidian';
 import RssPlugin from '../main';
+import { purgeEntriesByStatus, ArticleStatus } from './feedDatabase';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type ImageLocation    = 'obsidian' | 'vault' | 'current' | 'subfolder' | 'specified';
-type IntervalUnit     = 'minutes' | 'hours' | 'days' | 'months';
+type ImageLocation = 'obsidian' | 'vault' | 'current' | 'subfolder' | 'specified';
+type IntervalUnit = 'minutes' | 'hours' | 'days' | 'months';
 type CleanupDateField = 'datesaved' | 'datepub';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -47,54 +48,6 @@ function applyIndent(settingEl: HTMLElement, level: 1 | 2 = 1): void {
     settingEl.style.borderLeft = '3px solid var(--interactive-accent)';
 }
 
-// ─── Confirmation modal ───────────────────────────────────────────────────────
-
-class EnablePluginModal extends Modal {
-    private onConfirm: () => void;
-    private onCancel:  () => void;
-
-    constructor(app: App, onConfirm: () => void, onCancel: () => void) {
-        super(app);
-        this.onConfirm = onConfirm;
-        this.onCancel  = onCancel;
-    }
-
-    onOpen() {
-        const { contentEl } = this;
-        contentEl.empty();
-
-        contentEl.createEl('h2', { text: '⚙️ Before you enable' });
-
-        const msg = contentEl.createEl('p');
-        msg.style.cssText = 'color: var(--text-muted); margin-bottom: 16px; line-height: 1.6;';
-        msg.setText('Make sure you have already configured the plugin before activating it. Enabling without proper setup may cause unexpected behaviour.');
-
-        const checklist = contentEl.createEl('ul');
-        checklist.style.cssText = 'color: var(--text-normal); margin: 0 0 20px 16px; line-height: 2;';
-        [
-            'Set your RSS Folder path',
-            'Added at least one feed in My Feeds',
-            'Configured your update interval',
-            'Reviewed the template settings',
-        ].forEach(item => checklist.createEl('li', { text: item }));
-
-        const question = contentEl.createEl('p');
-        question.style.cssText = 'font-weight: 600; margin-bottom: 16px;';
-        question.setText('Have you already configured everything?');
-
-        const footer = contentEl.createDiv();
-        footer.style.cssText = 'display: flex; justify-content: flex-end; gap: 10px;';
-
-        const cancelBtn = footer.createEl('button', { text: 'Not yet, go back' });
-        cancelBtn.onclick = () => { this.onCancel(); this.close(); };
-
-        const confirmBtn = footer.createEl('button', { text: 'Yes, enable plugin', cls: 'mod-cta' });
-        confirmBtn.onclick = () => { this.onConfirm(); this.close(); };
-    }
-
-    onClose() { this.contentEl.empty(); }
-}
-
 // ─── Tab renderer ─────────────────────────────────────────────────────────────
 
 export function renderGeneralTab(
@@ -121,7 +74,7 @@ export function renderGeneralTab(
 
     const isEnabled = plugin.settings.pluginEnabled ?? false;
 
-    // ── Setup instructions & Enable toggle ────────────────────────────────────
+    // ── Setup instructions ────────────────────────────────────────────────────
 
     const setupCard = contentEl.createDiv();
     setupCard.style.cssText = `
@@ -131,7 +84,6 @@ export function renderGeneralTab(
         padding: 16px 18px;
         margin-bottom: 20px;
         transition: border-color 0.2s ease;
-        ${isEnabled ? 'border-color: var(--interactive-accent);' : ''}
     `;
 
     const setupHeader = setupCard.createDiv();
@@ -145,59 +97,9 @@ export function renderGeneralTab(
 
     const setupDesc = setupText.createEl('div');
     setupDesc.style.cssText = 'font-size: 0.85em; color: var(--text-muted); line-height: 1.6;';
+    setupDesc.setText('Configure the plugin below. Make sure to set your RSS folder and add feeds in My Feeds.');
 
-    if (isEnabled) {
-        setupDesc.setText('Plugin is active and running. Feeds will be updated automatically based on your interval settings.');
-    } else {
-        setupDesc.setText('Configure the plugin before enabling it. Make sure to set your RSS folder, add feeds in My Feeds, and review the template settings.');
-
-        const stepsList = setupText.createEl('ol');
-        stepsList.style.cssText = 'font-size: 0.83em; color: var(--text-muted); margin: 8px 0 0 16px; line-height: 1.9;';
-        [
-            'Set your RSS Folder path below',
-            'Go to My Feeds and add your feeds',
-            'Set your update interval',
-            'Review Global Template if needed',
-            'Enable the plugin using the toggle →',
-        ].forEach(step => stepsList.createEl('li', { text: step }));
-    }
-
-    // ── Enable toggle (right side) ────────────────────────────────────────────
-
-    const toggleSide = setupHeader.createDiv();
-    toggleSide.style.cssText = 'display: flex; flex-direction: column; align-items: center; gap: 6px; flex-shrink: 0; padding-top: 2px;';
-
-    const toggleLabel = toggleSide.createEl('div');
-    toggleLabel.style.cssText = 'font-size: 0.75em; color: var(--text-muted); white-space: nowrap;';
-    toggleLabel.setText(isEnabled ? 'Enabled' : 'Disabled');
-
-    const toggleEl = toggleSide.createEl('div', { cls: 'checkbox-container' });
-    if (isEnabled) toggleEl.classList.add('is-enabled');
-    toggleEl.style.cssText = 'margin: 0; cursor: pointer;';
-
-    toggleEl.addEventListener('click', async () => {
-        const currentlyEnabled = toggleEl.classList.contains('is-enabled');
-
-        if (!currentlyEnabled) {
-            new EnablePluginModal(
-                plugin.app,
-                async () => {
-                    plugin.settings.pluginEnabled = true;
-                    try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
-                    rerender();
-                },
-                () => { /* cancelled, do nothing */ }
-            ).open();
-        } else {
-            plugin.settings.pluginEnabled = false;
-            try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
-            rerender();
-        }
-    });
-
-    // ── Storage ───────────────────────────────────────────────────────────────
-
-    contentEl.createEl('h3', { text: 'Storage' });
+    // ── RSS Folder (No Storage H3) ────────────────────────────────────────────
 
     const folderSetting = new Setting(contentEl)
         .setName('RSS Folder')
@@ -211,10 +113,242 @@ export function renderGeneralTab(
                 }, 500));
             text.inputEl.style.fontSize = '16px';
             text.inputEl.autocapitalize = 'off';
-            text.inputEl.autocomplete   = 'off';
-            text.inputEl.spellcheck     = false;
+            text.inputEl.autocomplete = 'off';
+            text.inputEl.spellcheck = false;
         });
     applyCardStyle(folderSetting);
+
+    // ── Auto Update ───────────────────────────────────────────────────────────
+
+    contentEl.createEl('h3', { text: 'Auto Update' });
+
+    const autoUpdateSetting = new Setting(contentEl)
+        .setName('Enable Auto Update')
+        .setDesc('Automatically fetch articles from feeds in the background.')
+        .addToggle(toggle => toggle
+            .setValue(isEnabled)
+            .onChange(async (v) => {
+                plugin.settings.pluginEnabled = v;
+                try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                rerender();
+            }));
+    applyCardStyle(autoUpdateSetting);
+
+    if (isEnabled) {
+        const intervalSetting = new Setting(contentEl)
+            .setName('Update Interval')
+            .setDesc('How often feeds should be automatically checked.')
+            .addText(text => {
+                text.setPlaceholder('30')
+                    .setValue(displayValue(plugin.settings.updateIntervalValue, 30))
+                    .onChange(debounce(async (v: string) => {
+                        plugin.settings.updateIntervalValue = parsePositiveInt(v, 30);
+                        try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                    }, 500));
+                text.inputEl.style.fontSize = '16px';
+                text.inputEl.inputMode = 'numeric';
+                text.inputEl.autocapitalize = 'off';
+                text.inputEl.autocomplete = 'off';
+                text.inputEl.spellcheck = false;
+            })
+            .addDropdown(dropdown => dropdown
+                .addOption('minutes', 'Minutes').addOption('hours', 'Hours')
+                .addOption('days', 'Days').addOption('months', 'Months')
+                .setValue(plugin.settings.updateIntervalUnit ?? 'minutes')
+                .onChange(async (v: string) => {
+                    plugin.settings.updateIntervalUnit = v as IntervalUnit;
+                    try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                }));
+        applyCardStyle(intervalSetting);
+        applyIndent(intervalSetting.settingEl);
+    }
+
+    // ── Auto Delete ───────────────────────────────────────────────────────────
+
+    contentEl.createEl('h3', { text: 'Auto Delete' });
+
+    const autoDeleteEnabled = plugin.settings.autoCleanupValue != null && plugin.settings.autoCleanupValue > 0;
+
+    const autoDeleteToggle = new Setting(contentEl)
+        .setName('Auto Delete Old Articles')
+        .setDesc('Automatically delete old vault articles.')
+        .addToggle(toggle => toggle
+            .setValue(autoDeleteEnabled)
+            .onChange(async (v) => {
+                plugin.settings.autoCleanupValue = v ? 30 : 0;
+                try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                rerender();
+            }));
+    applyCardStyle(autoDeleteToggle);
+
+    if (autoDeleteEnabled) {
+        const cleanupSetting = new Setting(contentEl)
+            .setName('Delete Articles Older Than')
+            .setDesc('Threshold age before an article is safely deleted.')
+            .addText(text => {
+                text.setPlaceholder('30')
+                    .setValue(displayValue(plugin.settings.autoCleanupValue, 30))
+                    .onChange(debounce(async (v: string) => {
+                        plugin.settings.autoCleanupValue = parsePositiveInt(v, 30);
+                        try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                    }, 500));
+                text.inputEl.style.fontSize = '16px';
+                text.inputEl.inputMode = 'numeric';
+                text.inputEl.autocapitalize = 'off';
+                text.inputEl.autocomplete = 'off';
+                text.inputEl.spellcheck = false;
+            })
+            .addDropdown(dropdown => dropdown
+                .addOption('minutes', 'Minutes').addOption('hours', 'Hours')
+                .addOption('days', 'Days').addOption('months', 'Months')
+                .setValue(plugin.settings.autoCleanupUnit ?? 'days')
+                .onChange(async (v: string) => {
+                    plugin.settings.autoCleanupUnit = v as IntervalUnit;
+                    try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                }));
+        applyCardStyle(cleanupSetting);
+        applyIndent(cleanupSetting.settingEl);
+
+        const cleanupDateFieldSetting = new Setting(contentEl)
+            .setName('Date Criterion')
+            .setDesc('Which date to use when identifying old articles.')
+            .addDropdown(dropdown => dropdown
+                .addOption('datesaved', 'Date Saved')
+                .addOption('datepub', 'Date Published')
+                .setValue(plugin.settings.autoCleanupDateField ?? 'datesaved')
+                .onChange(async (v: string) => {
+                    plugin.settings.autoCleanupDateField = v as CleanupDateField;
+                    try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                }));
+        applyCardStyle(cleanupDateFieldSetting);
+        applyIndent(cleanupDateFieldSetting.settingEl);
+
+        const protectedCheckToggle = new Setting(contentEl)
+            .setName('Check Mark as Read Before Deleting')
+            .setDesc('Only delete articles if their checkbox property is true.')
+            .addToggle(toggle => toggle
+                .setValue(plugin.settings.autoCleanupCheckProperty ?? false)
+                .onChange(async (v) => {
+                    plugin.settings.autoCleanupCheckProperty = v;
+                    try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                    rerender();
+                }));
+        applyCardStyle(protectedCheckToggle);
+        applyIndent(protectedCheckToggle.settingEl);
+
+        if (plugin.settings.autoCleanupCheckProperty) {
+            const fallbackProp = plugin.settings.markAsReadCheckboxProperty?.trim() || 'Checkbox';
+            const protectedPropertySetting = new Setting(contentEl)
+                .setName('Custom Property Name')
+                .setDesc(`Defaults to the Mark as Read checkbox property ("${fallbackProp}"). Left empty to keep default.`)
+                .addText(text => {
+                    text.setPlaceholder(fallbackProp)
+                        .setValue(plugin.settings.autoCleanupCheckPropertyName ?? '')
+                        .onChange(debounce(async (v: string) => {
+                            plugin.settings.autoCleanupCheckPropertyName = v.trim();
+                            try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                        }, 500));
+                    text.inputEl.style.fontSize = '16px';
+                    text.inputEl.autocapitalize = 'off';
+                    text.inputEl.autocomplete = 'off';
+                    text.inputEl.spellcheck = false;
+                });
+            applyCardStyle(protectedPropertySetting);
+            applyIndent(protectedPropertySetting.settingEl, 2);
+        }
+    }
+
+    // ── Mark as Read ──────────────────────────────────────────────────────────
+
+    contentEl.createEl('h3', { text: 'Mark as Read' });
+
+    const markAsReadToggle = new Setting(contentEl)
+        .setName('Enable Mark as Read Link')
+        .setDesc('Adds a clickable link frontmatter property that toggles a checkbox when clicked.')
+        .addToggle(toggle => toggle
+            .setValue(plugin.settings.markAsReadEnabled ?? true)
+            .onChange(async (v) => {
+                plugin.settings.markAsReadEnabled = v;
+                try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                rerender();
+            }));
+    applyCardStyle(markAsReadToggle);
+
+    if (plugin.settings.markAsReadEnabled) {
+        const markAsReadLinkPropSetting = new Setting(contentEl)
+            .setName('Mark as Read Button Property Name')
+            .setDesc('Frontmatter property name for the clickable link.')
+            .setDesc('Name of the frontmatter property that stores the "Mark as Read" link.')
+            .addText(text => {
+                text.setPlaceholder('Mark as Read')
+                    .setValue(plugin.settings.markAsReadLinkProperty ?? 'Mark as Read')
+                    .onChange(async (val) => {
+                        plugin.settings.markAsReadLinkProperty = val;
+                        await plugin.saveSettings();
+                    });
+            });
+        applyCardStyle(markAsReadLinkPropSetting);
+        applyIndent(markAsReadLinkPropSetting.settingEl);
+
+        const markAsReadCheckboxPropSetting = new Setting(contentEl)
+            .setName('Read Property Name')
+            .setDesc('Name of the frontmatter property (boolean) that controls the read state.')
+            .addText(text => {
+                text.setPlaceholder('Read')
+                    .setValue(plugin.settings.markAsReadCheckboxProperty ?? 'Read')
+                    .onChange(async (val) => {
+                        plugin.settings.markAsReadCheckboxProperty = val;
+                        await plugin.saveSettings();
+                    });
+            });
+        applyCardStyle(markAsReadCheckboxPropSetting);
+        applyIndent(markAsReadCheckboxPropSetting.settingEl);
+
+        const markAsReadDeleteSetting = new Setting(contentEl)
+            .setName('Auto-Delete When Marked as Read')
+            .setDesc('Automatically delete articles when their checkbox is ticked. (Requires Auto-Update).')
+            .addToggle(toggle => toggle
+                .setValue(plugin.settings.markAsReadDeleteArticles ?? false)
+                .onChange(async (v) => {
+                    plugin.settings.markAsReadDeleteArticles = v;
+                    await plugin.saveSettings();
+                }));
+        applyCardStyle(markAsReadDeleteSetting);
+        applyIndent(markAsReadDeleteSetting.settingEl);
+
+        const copyFormulaSetting = new Setting(contentEl)
+            .setName('Copy Bases Formula')
+            .setDesc('Copy a formula for Obsidian Bases to create a clickable Mark as Read button in Gallery/Card views.')
+            .addButton(btn => {
+                btn.setButtonText('Copy Formula')
+                    .onClick(async () => {
+                        const checkboxProp = plugin.settings.markAsReadCheckboxProperty?.trim() || 'Read';
+                        // Synchronize with buildMarkAsReadLink encoding logic
+                        const formula =
+                            `link(
+  "obsidian://rss-mark-as-read?file=" + file.name.replace("%", "%25").replace("&", "%26").replace("#", "%23") + "&property=" + "${checkboxProp.replace(/%/g, '%25')}",
+  if(${checkboxProp},
+    html("<span style='font-size:1.5em'>✅</span>"),
+    html("<span style='font-size:1.5em'>🟦</span>")
+  )
+)`;
+                        try {
+                            await navigator.clipboard.writeText(formula);
+                            btn.setButtonText('Copied!');
+                            setTimeout(() => btn.setButtonText('Copy formula'), 2000);
+                        } catch {
+                            btn.setButtonText('Failed');
+                            setTimeout(() => btn.setButtonText('Copy formula'), 2000);
+                        }
+                    });
+            });
+        applyCardStyle(copyFormulaSetting);
+        applyIndent(copyFormulaSetting.settingEl);
+    }
+
+    // ── Storage ───────────────────────────────────────────────────────────────
+
+    contentEl.createEl('h3', { text: 'Storage' });
 
     const downloadImgSetting = new Setting(contentEl)
         .setName('Download Images')
@@ -233,9 +367,9 @@ export function renderGeneralTab(
             .setName('Default Location For New Images')
             .setDesc('Where newly added images are placed.')
             .addDropdown(dropdown => dropdown
-                .addOption('obsidian',  'Use Obsidian settings')
-                .addOption('vault',     'Vault folder')
-                .addOption('current',   'Same folder as file')
+                .addOption('obsidian', 'Use Obsidian settings')
+                .addOption('vault', 'Vault folder')
+                .addOption('current', 'Same folder as file')
                 .addOption('subfolder', 'In subfolder under RSS folder')
                 .addOption('specified', 'In the folder specified below')
                 .setValue(plugin.settings.imageLocation || 'obsidian')
@@ -250,7 +384,7 @@ export function renderGeneralTab(
         if (plugin.settings.imageLocation === 'obsidian') {
             const infoSetting = new Setting(contentEl)
                 .setName('Using Obsidian Attachment Settings')
-                .setDesc('Go to Settings → Files and links → Default location for new attachments to change this.');
+                .setDesc('See Obsidian Settings → Files and links → Default location for new attachments.');
             applyCardStyle(infoSetting);
             applyIndent(infoSetting.settingEl, 2);
             infoSetting.settingEl.style.opacity = '0.7';
@@ -269,8 +403,8 @@ export function renderGeneralTab(
                         }, 500));
                     text.inputEl.style.fontSize = '16px';
                     text.inputEl.autocapitalize = 'off';
-                    text.inputEl.autocomplete   = 'off';
-                    text.inputEl.spellcheck     = false;
+                    text.inputEl.autocomplete = 'off';
+                    text.inputEl.spellcheck = false;
                 });
             applyCardStyle(subfolderNameSetting);
             applyIndent(subfolderNameSetting.settingEl, 2);
@@ -301,220 +435,13 @@ export function renderGeneralTab(
                         }, 500));
                     text.inputEl.style.fontSize = '16px';
                     text.inputEl.autocapitalize = 'off';
-                    text.inputEl.autocomplete   = 'off';
-                    text.inputEl.spellcheck     = false;
+                    text.inputEl.autocomplete = 'off';
+                    text.inputEl.spellcheck = false;
                 });
             applyCardStyle(pathSetting);
             applyIndent(pathSetting.settingEl, 2);
         }
     }
-
-    // ── Mark as Read ──────────────────────────────────────────────────────────
-
-    contentEl.createEl('h3', { text: 'Mark as Read' });
-
-    const markAsReadToggle = new Setting(contentEl)
-        .setName('Enable Mark as Read Link')
-        .setDesc('Adds a clickable link as a frontmatter property on each article. When clicked, sets the configured checkbox property to true. Works in Obsidian Bases card view where native checkboxes are not interactive.')
-        .addToggle(toggle => toggle
-            .setValue(plugin.settings.markAsReadEnabled ?? true)
-            .onChange(async (v) => {
-                plugin.settings.markAsReadEnabled = v;
-                try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
-                rerender();
-            }));
-    applyCardStyle(markAsReadToggle);
-
-    if (plugin.settings.markAsReadEnabled) {
-        const markAsReadLinkPropSetting = new Setting(contentEl)
-            .setName('Link Property Name')
-            .setDesc('Name of the frontmatter property that will hold the clickable Mark as Read link.')
-            .addText(text => {
-                text.setPlaceholder('Mark as Read')
-                    .setValue(plugin.settings.markAsReadLinkProperty ?? 'Mark as Read')
-                    .onChange(debounce(async (v: string) => {
-                        plugin.settings.markAsReadLinkProperty = v.trim();
-                        try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
-                    }, 500));
-                text.inputEl.style.fontSize = '16px';
-                text.inputEl.autocapitalize = 'off';
-                text.inputEl.autocomplete   = 'off';
-                text.inputEl.spellcheck     = false;
-            });
-        applyCardStyle(markAsReadLinkPropSetting);
-        applyIndent(markAsReadLinkPropSetting.settingEl);
-
-        const markAsReadCheckboxPropSetting = new Setting(contentEl)
-            .setName('Checkbox Property Name')
-            .setDesc('Name of the frontmatter checkbox property that will be toggled when the link is clicked. Should match the "Check Property Before Deleting" property if you use that feature.')
-            .addText(text => {
-                text.setPlaceholder('Checkbox')
-                    .setValue(plugin.settings.markAsReadCheckboxProperty ?? 'Checkbox')
-                    .onChange(debounce(async (v: string) => {
-                        plugin.settings.markAsReadCheckboxProperty = v.trim();
-                        try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
-                    }, 500));
-                text.inputEl.style.fontSize = '16px';
-                text.inputEl.autocapitalize = 'off';
-                text.inputEl.autocomplete   = 'off';
-                text.inputEl.spellcheck     = false;
-            });
-        applyCardStyle(markAsReadCheckboxPropSetting);
-        applyIndent(markAsReadCheckboxPropSetting.settingEl);
-
-        const copyFormulaSetting = new Setting(contentEl)
-            .setName('Bases Formula')
-            .setDesc('Copy this formula into an Obsidian Bases view to get a clickable Mark as Read button in card view.')
-            .addButton(btn => {
-                btn.setButtonText('Copy formula')
-                   .onClick(async () => {
-                        const checkboxProp = plugin.settings.markAsReadCheckboxProperty?.trim() || 'Checkbox';
-                        const formula =
-`link(
-  "obsidian://rss-mark-as-read?file=" + file.name.replace("&", "%26"),
-  if(${checkboxProp},
-    html("<span style='font-size:1.5em'>✅</span>"),
-    html("<span style='font-size:1.5em'>🟦</span>")
-  )
-)`;
-                        try {
-                            await navigator.clipboard.writeText(formula);
-                            btn.setButtonText('Copied!');
-                            setTimeout(() => btn.setButtonText('Copy formula'), 2000);
-                        } catch {
-                            btn.setButtonText('Failed');
-                            setTimeout(() => btn.setButtonText('Copy formula'), 2000);
-                        }
-                   });
-            });
-        applyCardStyle(copyFormulaSetting);
-        applyIndent(copyFormulaSetting.settingEl);
-    }
-
-    // ── Timing ────────────────────────────────────────────────────────────────
-
-    contentEl.createEl('h3', { text: 'Timing' });
-
-    const intervalSetting = new Setting(contentEl)
-        .setName('Update Interval')
-        .setDesc('Automatically update all feeds at specified intervals.')
-        .addText(text => {
-            text.setPlaceholder('30')
-                .setValue(displayValue(plugin.settings.updateIntervalValue, 30))
-                .onChange(debounce(async (v: string) => {
-                    plugin.settings.updateIntervalValue = parsePositiveInt(v, 30);
-                    try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
-                }, 500));
-            text.inputEl.style.fontSize = '16px';
-            text.inputEl.inputMode      = 'numeric';
-            text.inputEl.autocapitalize = 'off';
-            text.inputEl.autocomplete   = 'off';
-            text.inputEl.spellcheck     = false;
-        })
-        .addDropdown(dropdown => dropdown
-            .addOption('minutes', 'Minutes').addOption('hours',  'Hours')
-            .addOption('days',    'Days')   .addOption('months', 'Months')
-            .setValue(plugin.settings.updateIntervalUnit ?? 'minutes')
-            .onChange(async (v: string) => {
-                plugin.settings.updateIntervalUnit = v as IntervalUnit;
-                try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
-            }));
-    applyCardStyle(intervalSetting);
-
-    // ── Auto Delete ───────────────────────────────────────────────────────────
-
-    const autoDeleteEnabled = plugin.settings.autoCleanupValue != null
-        && plugin.settings.autoCleanupValue > 0;
-
-    const autoDeleteToggle = new Setting(contentEl)
-        .setName('Auto Delete Old Articles')
-        .setDesc('Automatically delete old articles after a specified time.')
-        .addToggle(toggle => toggle
-            .setValue(autoDeleteEnabled)
-            .onChange(async (v) => {
-                plugin.settings.autoCleanupValue = v ? 30 : 0;
-                try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
-                rerender();
-            }));
-    applyCardStyle(autoDeleteToggle);
-
-    if (autoDeleteEnabled) {
-        const cleanupSetting = new Setting(contentEl)
-            .setName('Delete Articles Older Than')
-            .setDesc('Articles older than this will be deleted (keeps feed).')
-            .addText(text => {
-                text.setPlaceholder('30')
-                    .setValue(displayValue(plugin.settings.autoCleanupValue, 30))
-                    .onChange(debounce(async (v: string) => {
-                        plugin.settings.autoCleanupValue = parsePositiveInt(v, 30);
-                        try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
-                    }, 500));
-                text.inputEl.style.fontSize = '16px';
-                text.inputEl.inputMode      = 'numeric';
-                text.inputEl.autocapitalize = 'off';
-                text.inputEl.autocomplete   = 'off';
-                text.inputEl.spellcheck     = false;
-            })
-            .addDropdown(dropdown => dropdown
-                .addOption('minutes', 'Minutes').addOption('hours',  'Hours')
-                .addOption('days',    'Days')   .addOption('months', 'Months')
-                .setValue(plugin.settings.autoCleanupUnit ?? 'days')
-                .onChange(async (v: string) => {
-                    plugin.settings.autoCleanupUnit = v as IntervalUnit;
-                    try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
-                }));
-        applyCardStyle(cleanupSetting);
-        applyIndent(cleanupSetting.settingEl);
-
-        const cleanupDateFieldSetting = new Setting(contentEl)
-            .setName('Date Criterion')
-            .setDesc('Which date field to use when evaluating article age.')
-            .addDropdown(dropdown => dropdown
-                .addOption('datesaved', '{{datesaved}} — Date the article was saved')
-                .addOption('datepub',   '{{datepub}} — Date the article was published')
-                .setValue(plugin.settings.autoCleanupDateField ?? 'datesaved')
-                .onChange(async (v: string) => {
-                    plugin.settings.autoCleanupDateField = v as CleanupDateField;
-                    try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
-                }));
-        applyCardStyle(cleanupDateFieldSetting);
-        applyIndent(cleanupDateFieldSetting.settingEl);
-
-        const protectedCheckToggle = new Setting(contentEl)
-            .setName('Check Property Before Deleting')
-            .setDesc('If enabled, articles will only be deleted if the specified property is checked (true).')
-            .addToggle(toggle => toggle
-                .setValue(plugin.settings.autoCleanupCheckProperty ?? false)
-                .onChange(async (v) => {
-                    plugin.settings.autoCleanupCheckProperty = v;
-                    try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
-                    rerender();
-                }));
-        applyCardStyle(protectedCheckToggle);
-        applyIndent(protectedCheckToggle.settingEl);
-
-        if (plugin.settings.autoCleanupCheckProperty) {
-            const fallbackProp = plugin.settings.markAsReadCheckboxProperty?.trim() || 'Checkbox';
-            const protectedPropertySetting = new Setting(contentEl)
-                .setName('Custom Property Name')
-                .setDesc(`By default, uses the Mark as Read checkbox property ("${fallbackProp}"). Leave blank to keep this behaviour, or enter a custom property name to override it.`)
-                .addText(text => {
-                    text.setPlaceholder(fallbackProp)
-                        .setValue(plugin.settings.autoCleanupCheckPropertyName ?? '')
-                        .onChange(debounce(async (v: string) => {
-                            plugin.settings.autoCleanupCheckPropertyName = v.trim();
-                            try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
-                        }, 500));
-                    text.inputEl.style.fontSize = '16px';
-                    text.inputEl.autocapitalize = 'off';
-                    text.inputEl.autocomplete   = 'off';
-                    text.inputEl.spellcheck     = false;
-                });
-            applyCardStyle(protectedPropertySetting);
-            applyIndent(protectedPropertySetting.settingEl, 2);
-        }
-    }
-
 
     // ── Ribbon Icons ──────────────────────────────────────────────────────────
 
@@ -559,7 +486,7 @@ export function renderGeneralTab(
 
     const statusBarSetting = new Setting(contentEl)
         .setName('Show Progress in Status Bar')
-        .setDesc('Display "RSS X/Y" in the bottom status bar while feeds are updating.')
+        .setDesc('Display progress in the bottom status bar.')
         .addToggle(toggle => toggle
             .setValue(plugin.settings.showStatusBar ?? true)
             .onChange(async (v) => {
@@ -574,7 +501,7 @@ export function renderGeneralTab(
 
     const tagShortsSetting = new Setting(contentEl)
         .setName('Tag YouTube Shorts')
-        .setDesc('Automatically add the "shorts" tag to articles from YouTube Shorts URLs (/shorts/). Can be overridden per feed.')
+        .setDesc('Automatically tag articles from YouTube Shorts.')
         .addToggle(toggle => toggle
             .setValue(plugin.settings.tagShortsGlobal ?? false)
             .onChange(async (v) => {
@@ -585,7 +512,7 @@ export function renderGeneralTab(
 
     const skipShortsSetting = new Setting(contentEl)
         .setName('Skip YouTube Shorts')
-        .setDesc('Never save articles from YouTube Shorts URLs (/shorts/). Can be overridden per feed.')
+        .setDesc('Never save articles from YouTube Shorts URLs.')
         .addToggle(toggle => toggle
             .setValue(plugin.settings.skipShortsGlobal ?? false)
             .onChange(async (v) => {
@@ -596,7 +523,7 @@ export function renderGeneralTab(
 
     const tagLiveToggle = new Setting(contentEl)
         .setName('Tag Live Streams')
-        .setDesc('Automatically add the "live" tag to articles whose title contains live-related keywords. You can delete per-feed settings.')
+        .setDesc('Tag articles matching live stream keywords in the title.')
         .addToggle(toggle => toggle
             .setValue(plugin.settings.tagLiveGlobal ?? false)
             .onChange(async (v) => {
@@ -609,18 +536,18 @@ export function renderGeneralTab(
     if (plugin.settings.tagLiveGlobal) {
         const tagLiveKeywordsSetting = new Setting(contentEl)
             .setName('Live Keywords')
-            .setDesc('Comma-separated keywords to match against the article title (case-insensitive).')
+            .setDesc('Comma-separated keywords (case-insensitive).')
             .addText(t => {
                 t.setPlaceholder('live, ao vivo, stream, 🔴')
-                 .setValue(plugin.settings.tagLiveKeywords ?? '')
-                 .onChange(debounce(async (v: string) => {
-                     plugin.settings.tagLiveKeywords = v.trim();
-                     try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
-                 }, 500));
+                    .setValue(plugin.settings.tagLiveKeywords ?? '')
+                    .onChange(debounce(async (v: string) => {
+                        plugin.settings.tagLiveKeywords = v.trim();
+                        try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                    }, 500));
                 t.inputEl.style.fontSize = '16px';
                 t.inputEl.autocapitalize = 'off';
-                t.inputEl.autocomplete   = 'off';
-                t.inputEl.spellcheck     = false;
+                t.inputEl.autocomplete = 'off';
+                t.inputEl.spellcheck = false;
             });
         applyCardStyle(tagLiveKeywordsSetting);
         applyIndent(tagLiveKeywordsSetting.settingEl);
@@ -633,7 +560,7 @@ export function renderGeneralTab(
 
     const devToolsSetting = new Setting(contentEl)
         .setName('Developer Mode')
-        .setDesc('Enables extra controls for debugging, such as the Reload Plugin button in the tab bar.')
+        .setDesc('Enables extra controls for debugging.')
         .addToggle(toggle => toggle
             .setValue(plugin.settings.devMode ?? false)
             .onChange(async (v) => {
@@ -651,4 +578,62 @@ export function renderGeneralTab(
                 }
             }));
     applyCardStyle(devToolsSetting);
+
+    if (plugin.settings.devMode) {
+        const purgeConfigs: { status: ArticleStatus; label: string }[] = [
+            { status: 'old_article', label: 'old_article' },
+            { status: 'skip_shorts', label: 'skip_shorts' },
+            { status: 'skip_live', label: 'skip_live' },
+            { status: 'mark_as_read', label: 'mark_as_read' },
+        ];
+
+        for (const { status, label } of purgeConfigs) {
+            let confirming = false;
+            let resetTimer: ReturnType<typeof setTimeout> | null = null;
+
+            const purgeSetting = new Setting(contentEl)
+                .setName(`Purge ${label} entries`)
+                .setDesc(`Permanently removes all ${label} entries from the database file.`)
+                .addButton(btn => {
+                    btn.setButtonText(`Purge ${label} entries`)
+                        .setWarning()
+                        .onClick(async () => {
+                            if (!confirming) {
+                                confirming = true;
+                                btn.setButtonText('⚠️ Click again to confirm');
+                                btn.buttonEl.style.background = 'var(--color-red)';
+
+                                resetTimer = setTimeout(() => {
+                                    confirming = false;
+                                    btn.setButtonText(`Purge ${label} entries`);
+                                    btn.buttonEl.style.background = '';
+                                }, 4000);
+                            } else {
+                                if (resetTimer) clearTimeout(resetTimer);
+                                confirming = false;
+                                btn.setButtonText('⏳ Purging...');
+                                btn.setDisabled(true);
+
+                                try {
+                                    const removed = await purgeEntriesByStatus(plugin.app, status);
+                                    if (removed > 0) {
+                                        new Notice(`RSS: Removed ${removed} ${label} entr${removed !== 1 ? 'ies' : 'y'} from database.`, 5000);
+                                    } else {
+                                        new Notice(`RSS: No ${label} entries found.`, 3000);
+                                    }
+                                } catch (e) {
+                                    console.error(`RSS: purgeEntriesByStatus('${status}') failed`, e);
+                                    new Notice('RSS: Failed to purge entries.', 4000);
+                                } finally {
+                                    btn.setButtonText(`Purge ${label} entries`);
+                                    btn.buttonEl.style.background = '';
+                                    btn.setDisabled(false);
+                                }
+                            }
+                        });
+                });
+            applyCardStyle(purgeSetting);
+            applyIndent(purgeSetting.settingEl);
+        }
+    }
 }

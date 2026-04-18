@@ -3,7 +3,7 @@ import RssPlugin, { FeedConfig, resolveFeedPath } from '../main';
 import { fetchAndExtract, fetchYoutubeDuration, fetchFullContent } from './feedExtractor';
 import { processItems, sanitizeFileName } from './feedProcessor';
 import { saveFeedItem, applyTemplate } from './feedSaver';
-import { cleanupOldFiles, deleteLiveArticlesForFeed, runAutoCleanup } from './feedDelete';
+import { cleanupOldFiles, deleteLiveArticlesForFeed, runAutoCleanup, FileMeta, resolveLinkFromFile, readPubDateFromFrontmatter } from './feedDelete';
 import { loadAutoDatabase, saveAutoDatabase, loadUserDatabase, isKnown, AutoDatabase } from './feedDatabase';
 import { tagDuplicatesInVault } from './feedDuplicate';
 import { extractImageUrl, upgradeYoutubeThumbnail } from './imageHandler';
@@ -130,12 +130,14 @@ export async function updateFeed(
                     const fileExists       = await app.vault.adapter.exists(filePath);
 
                     if (!fileExists) {
+                        let htmlContent: string | undefined;
                         if (item.link) {
                             const full = await fetchFullContent(item.link);
                             if (full?.content) item.content = full.content;
+                            htmlContent = full?.html;
                         }
                         if (!item.imageUrl && item.link) {
-                            item.imageUrl = await extractImageUrl({}, item.link);
+                            item.imageUrl = await extractImageUrl({}, item.link, htmlContent);
                         }
                     }
                 }
@@ -166,20 +168,7 @@ export async function updateFeed(
             if (deleted > 0) await saveAutoDatabase(app, db);
         }
 
-        const cleanupValue     = feed.autoCleanupValue ?? plugin.settings.autoCleanupValue;
-        const cleanupUnit      = feed.autoCleanupUnit  ?? plugin.settings.autoCleanupUnit;
-        const feedDateField    = feed.autoCleanupDateField;
-        const cleanupDateField = (!feedDateField || feedDateField === 'global')
-            ? plugin.settings.autoCleanupDateField
-            : feedDateField;
-
-        if (cleanupValue != null && cleanupValue > 0) {
-            deleted += await cleanupOldFiles(
-                app.vault, app, absoluteFolderPath,
-                cleanupValue, cleanupUnit, cleanupDateField,
-                plugin.settings, db
-            );
-        }
+        // (cleanupOldFiles has been moved to runAutoCleanup for the single-pass optmization)
 
         await saveAutoDatabase(app, db);
 
@@ -196,10 +185,7 @@ export async function updateAllFeeds(
     app:    App,
     plugin: RssPlugin,
 ): Promise<void> {
-    if (!plugin.settings.pluginEnabled) {
-        new Notice('Plugin is disabled.', 4000);
-        return;
-    }
+    // Auto-update will be blocked in `main.ts` but manual updates are allowed.
 
     if (plugin.isUpdating) return;
 
@@ -236,17 +222,35 @@ export async function updateAllFeeds(
         }
 
         if (plugin.isUpdating) {
-            try {
-                totalDeleted += await runAutoCleanup(app, plugin, db);
-            } catch (e) {
-                console.error('RSS: cleanup failed:', e);
+            const rssFolderPath = normalizePath(plugin.settings.folderPath);
+            const allMdFiles = app.vault.getMarkdownFiles().filter(f => f.path.startsWith(rssFolderPath + '/'));
+            const totalFiles = allMdFiles.length;
+            const fileCache: FileMeta[] = [];
+
+            for (let i = 0; i < totalFiles; i++) {
+                if (!plugin.isUpdating) break;
+                const f = allMdFiles[i]!;
+                plugin.setStatusBarText(`⏳ Saving: ${i + 1}/${totalFiles}`, `Processing ${f.path}`);
+                
+                const link = await resolveLinkFromFile(app, app.vault, f);
+                const pubDate = await readPubDateFromFrontmatter(app, app.vault, f);
+                fileCache.push({ file: f, link, pubDate, deleted: false });
             }
-            try {
-                await tagDuplicatesInVault(app, plugin);
-            } catch (e) {
-                console.error('RSS: duplicate tagging failed:', e);
+
+            if (plugin.isUpdating) {
+                try {
+                    totalDeleted += await runAutoCleanup(app, plugin, db, fileCache);
+                } catch (e) {
+                    console.error('RSS: cleanup failed:', e);
+                }
+                try {
+                    plugin.setStatusBarText('⏳ Checking Duplicates...');
+                    await tagDuplicatesInVault(app, plugin, fileCache);
+                } catch (e) {
+                    console.error('RSS: duplicate tagging failed:', e);
+                }
+                plugin.showSummary(totalSaved, totalDeleted);
             }
-            plugin.showSummary(totalSaved, totalDeleted);
         }
 
         plugin.clearStatusBar();

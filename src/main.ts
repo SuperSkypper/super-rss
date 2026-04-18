@@ -1,10 +1,10 @@
 import { Plugin, Notice, normalizePath } from 'obsidian';
 import { RssSettingTab } from './settings';
-import { AddUrlModal }   from './settings/feedAdd';
-import { addFeed }       from './settings/feedAdd';
+import { AddUrlModal } from './settings/feedAdd';
+import { addFeed } from './settings/feedAdd';
 import { updateFeed, updateAllFeeds } from './settings/feedUpdate';
 import { handleMarkAsRead, MARK_AS_READ_PROTOCOL } from './settings/feedMarkAsRead';
-import { loadAutoDatabase, saveAutoDatabase } from './settings/feedDatabase';
+import { loadAutoDatabase, saveAutoDatabase, migrateAndPurgeDatabase } from './settings/feedDatabase';
 
 // ─── Types & defaults (extracted to keep main.ts lean) ───────────────────────
 import { FeedConfig, PluginSettings, DEFAULT_SETTINGS } from './settings/settingsDefault';
@@ -22,8 +22,8 @@ export function sanitizeFolderPath(path: string): string {
 }
 
 export function resolveFeedPath(feed: FeedConfig, settings: PluginSettings): string {
-    const root    = sanitizeFolderPath(settings.folderPath);
-    const group   = feed.groupId ? settings.groups.find(g => g.id === feed.groupId) : null;
+    const root = sanitizeFolderPath(settings.folderPath);
+    const group = feed.groupId ? settings.groups.find(g => g.id === feed.groupId) : null;
     const feedSub = (feed.folder || feed.name || 'Untitled').trim();
 
     if (group) {
@@ -43,10 +43,11 @@ export default class RssPlugin extends Plugin {
 
     // Keep references so we can show/hide ribbon icons after saveSettings
     private ribbonUpdateEl: HTMLElement | null = null;
-    private ribbonAddEl:    HTMLElement | null = null;
+    private ribbonAddEl: HTMLElement | null = null;
 
     async onload() {
         await this.loadSettings();
+        await migrateAndPurgeDatabase(this.app);
 
         this.addSettingTab(new RssSettingTab(this.app, this));
 
@@ -103,7 +104,7 @@ export default class RssPlugin extends Plugin {
     setStatusBar(current: number, total: number, feedName: string): void {
         if (this.settings.showStatusBar && this.statusBarItem) {
             this.statusBarItem.style.display = '';
-            this.statusBarItem.setText(`RSS ${current}/${total}`);
+            this.statusBarItem.setText(`Saving RSS: ${current}/${total}`);
             this.statusBarItem.title = `Updating feeds ${current}/${total}: ${feedName}`;
         }
     }
@@ -151,18 +152,18 @@ export default class RssPlugin extends Plugin {
     // ── Interval ──────────────────────────────────────────────────────────────
 
     private getIntervalMs(): number {
-        const value  = this.settings.updateIntervalValue ?? 30;
-        const unit   = this.settings.updateIntervalUnit ?? 'minutes';
+        const value = this.settings.updateIntervalValue ?? 30;
+        const unit = this.settings.updateIntervalUnit ?? 'minutes';
         const minute = 60 * 1000;
-        const hour   = minute * 60;
-        const day    = hour * 24;
-        const month  = day * 30;
+        const hour = minute * 60;
+        const day = hour * 24;
+        const month = day * 30;
         switch (unit) {
             case 'minutes': return value * minute;
-            case 'hours':   return value * hour;
-            case 'days':    return value * day;
-            case 'months':  return value * month;
-            default:        return value * minute;
+            case 'hours': return value * hour;
+            case 'days': return value * day;
+            case 'months': return value * month;
+            default: return value * minute;
         }
     }
 
@@ -225,21 +226,22 @@ export default class RssPlugin extends Plugin {
         this.settings.feeds.forEach(f => {
             if (!f.previousName) f.previousName = (f.name || '').trim();
         });
-        if (this.settings.pluginEnabled === undefined)            this.settings.pluginEnabled = false;
-        if (this.settings.tagShortsGlobal === undefined)          this.settings.tagShortsGlobal = false;
-        if (this.settings.skipShortsGlobal === undefined)         this.settings.skipShortsGlobal = false;
-        if (this.settings.tagLiveGlobal === undefined)            this.settings.tagLiveGlobal = false;
-        if (this.settings.tagLiveKeywords === undefined)          this.settings.tagLiveKeywords = DEFAULT_SETTINGS.tagLiveKeywords;
-        if (this.settings.devMode === undefined)                  this.settings.devMode = false;
-        if (this.settings.fileNameTemplate === undefined)         this.settings.fileNameTemplate = DEFAULT_SETTINGS.fileNameTemplate;
+        if (this.settings.pluginEnabled === undefined) this.settings.pluginEnabled = false;
+        if (this.settings.tagShortsGlobal === undefined) this.settings.tagShortsGlobal = false;
+        if (this.settings.skipShortsGlobal === undefined) this.settings.skipShortsGlobal = false;
+        if (this.settings.tagLiveGlobal === undefined) this.settings.tagLiveGlobal = false;
+        if (this.settings.tagLiveKeywords === undefined) this.settings.tagLiveKeywords = DEFAULT_SETTINGS.tagLiveKeywords;
+        if (this.settings.devMode === undefined) this.settings.devMode = false;
+        if (this.settings.fileNameTemplate === undefined) this.settings.fileNameTemplate = DEFAULT_SETTINGS.fileNameTemplate;
         if (this.settings.autoCleanupCheckProperty === undefined) this.settings.autoCleanupCheckProperty = false;
-        if (this.settings.showProgressNotice === undefined)       this.settings.showProgressNotice = true;
-        if (this.settings.showStatusBar === undefined)            this.settings.showStatusBar = true;
-        if (this.settings.ribbonUpdate === undefined)             this.settings.ribbonUpdate = true;
-        if (this.settings.ribbonAdd === undefined)                this.settings.ribbonAdd = true;
-        if (this.settings.markAsReadEnabled === undefined)            this.settings.markAsReadEnabled = true;
-        if (this.settings.markAsReadLinkProperty === undefined)       this.settings.markAsReadLinkProperty = DEFAULT_SETTINGS.markAsReadLinkProperty;
-        if (this.settings.markAsReadCheckboxProperty === undefined)   this.settings.markAsReadCheckboxProperty = DEFAULT_SETTINGS.markAsReadCheckboxProperty;
+        if (this.settings.showProgressNotice === undefined) this.settings.showProgressNotice = true;
+        if (this.settings.showStatusBar === undefined) this.settings.showStatusBar = true;
+        if (this.settings.ribbonUpdate === undefined) this.settings.ribbonUpdate = true;
+        if (this.settings.ribbonAdd === undefined) this.settings.ribbonAdd = true;
+        if (this.settings.markAsReadEnabled === undefined) this.settings.markAsReadEnabled = true;
+        if (this.settings.markAsReadLinkProperty === undefined) this.settings.markAsReadLinkProperty = DEFAULT_SETTINGS.markAsReadLinkProperty;
+        if (this.settings.markAsReadCheckboxProperty === undefined) this.settings.markAsReadCheckboxProperty = DEFAULT_SETTINGS.markAsReadCheckboxProperty;
+        if (this.settings.markAsReadDeleteArticles === undefined) this.settings.markAsReadDeleteArticles = false;
     }
 
     async saveSettings() {
@@ -262,8 +264,8 @@ export default class RssPlugin extends Plugin {
                 continue;
             }
 
-            const group    = feed.groupId ? this.settings.groups.find(g => g.id === feed.groupId) : null;
-            const root     = sanitizeFolderPath(this.settings.folderPath);
+            const group = feed.groupId ? this.settings.groups.find(g => g.id === feed.groupId) : null;
+            const root = sanitizeFolderPath(this.settings.folderPath);
             const groupSub = group ? group.name.trim() : null;
 
             const oldPath = groupSub ? `${root}/${groupSub}/${oldName}` : `${root}/${oldName}`;

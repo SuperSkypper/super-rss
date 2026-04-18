@@ -95,7 +95,7 @@ function getThumbnailFromMediaObj(media: any): string {
     return '';
 }
 
-export async function extractImageUrl(item: any, itemUrl: string): Promise<string> {
+export async function extractImageUrl(item: any, itemUrl: string, providedHtml?: string): Promise<string> {
     let url = '';
 
     // 1. YouTube / media:group
@@ -154,22 +154,30 @@ export async function extractImageUrl(item: any, itemUrl: string): Promise<strin
     // requestUrl (Obsidian API) does not support a timeout parameter, so we race
     // the request against a manual 5-second rejection to avoid hanging on slow pages.
     if (!url && itemUrl?.startsWith('http')) {
-        try {
-            const timeoutPromise = new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error('timeout')), 5000)
-            );
-            const response = await Promise.race([
-                requestUrl({ url: itemUrl, method: 'GET' }),
-                timeoutPromise,
-            ]);
-            if (response?.status === 200) {
-                const html = response.text;
-                const metaMatch =
-                    /<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)["'][^>]+content=["']([^"']+)["']/i.exec(html) ||
-                    /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:og:image|twitter:image)["']/i.exec(html);
-                if (metaMatch?.[1]) url = metaMatch[1];
-            }
-        } catch { /* Silent fail — includes timeout */ }
+        if (providedHtml) {
+            console.log(`RSS: extractImageUrl reusing provided HTML for ${itemUrl}`);
+            const metaMatch =
+                /<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)["'][^>]+content=["']([^"']+)["']/i.exec(providedHtml) ||
+                /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:og:image|twitter:image)["']/i.exec(providedHtml);
+            if (metaMatch?.[1]) url = metaMatch[1];
+        } else {
+            try {
+                const timeoutPromise = new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error('timeout')), 5000)
+                );
+                const response = await Promise.race([
+                    requestUrl({ url: itemUrl, method: 'GET' }),
+                    timeoutPromise,
+                ]);
+                if (response?.status === 200) {
+                    const html = response.text;
+                    const metaMatch =
+                        /<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)["'][^>]+content=["']([^"']+)["']/i.exec(html) ||
+                        /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:og:image|twitter:image)["']/i.exec(html);
+                    if (metaMatch?.[1]) url = metaMatch[1];
+                }
+            } catch { /* Silent fail — includes timeout */ }
+        }
     }
 
     // 7. Cleanup and path resolution

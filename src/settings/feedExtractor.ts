@@ -27,6 +27,8 @@ export interface RawFeed {
 export interface FullContent {
     /** Main content as clean Markdown — always produced by defuddle/full */
     content: string;
+    /** Original HTML content returned by the server */
+    html?: string;
 }
 
 // ─── XML parsing via DOMParser (browser-native, works on all platforms) ───────
@@ -413,7 +415,7 @@ export async function fetchFullContent(url: string): Promise<FullContent | null>
         const content = result?.content?.trim() ?? '';
         if (!content) return null;
 
-        return { content };
+        return { content, html };
     } catch (e) {
         console.warn(`RSS: Defuddle failed for ${url}:`, e);
         return null;

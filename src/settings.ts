@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, Notice, setIcon } from 'obsidian';
+import { App, PluginSettingTab, Setting, Notice, setIcon, normalizePath } from 'obsidian';
 import RssPlugin, { resolveFeedPath } from './main';
 import { renderGeneralTab }        from './settings/settingsGeneral';
 import { renderGlobalTemplateTab } from './settings/settingsTemplate';
@@ -6,8 +6,7 @@ import { renderMyFeedsTab }        from './settings/settingsFeeds';
 import { renderOpmlTab }           from './settings/settingsOPML';
 import { AddUrlModal }             from './settings/feedAdd';
 import { addFeed }                 from './settings/feedAdd';
-import { cleanupOldFiles, cleanOldArticleEntries } from './settings/feedSaver';
-import { deleteOrphanedDbArticles } from './settings/feedDelete';
+import { runAutoCleanup, FileMeta, resolveLinkFromFile, readPubDateFromFrontmatter } from './settings/feedDelete';
 import { tagDuplicatesInVault }    from './settings/feedDuplicate';
 
 export class RssSettingTab extends PluginSettingTab {
@@ -59,85 +58,43 @@ export class RssSettingTab extends PluginSettingTab {
             return;
         }
 
-        const { loadAutoDatabase, saveAutoDatabase } = await import('./settings/feedDatabase');
-        const db = await loadAutoDatabase(this.app);
-        let totalDeleted = 0;
+        this.plugin.setStatusBarText('⏳ Cleaning Articles...');
 
-        for (const feed of enabledFeeds) {
-            const feedPath         = resolveFeedPath(feed, this.plugin.settings);
-            const feedDateField    = feed.autoCleanupDateField;
-            const cleanupDateField = (!feedDateField || feedDateField === 'global')
-                ? this.plugin.settings.autoCleanupDateField
-                : feedDateField;
-
-            if (feed.autoCleanupValue != null && feed.autoCleanupValue > 0) {
-                try {
-                    totalDeleted += await cleanupOldFiles(
-                        this.app.vault,
-                        this.app,
-                        feedPath,
-                        feed.autoCleanupValue,
-                        feed.autoCleanupUnit ?? this.plugin.settings.autoCleanupUnit,
-                        cleanupDateField,
-                        this.plugin.settings,
-                        db
-                    );
-                } catch (e) {
-                    console.error(`Cleanup error [${feed.name}]:`, e);
-                }
-                continue;
-            }
-
-            if (this.plugin.settings.autoCleanupValue > 0) {
-                try {
-                    totalDeleted += await cleanupOldFiles(
-                        this.app.vault,
-                        this.app,
-                        feedPath,
-                        this.plugin.settings.autoCleanupValue,
-                        this.plugin.settings.autoCleanupUnit,
-                        this.plugin.settings.autoCleanupDateField,
-                        this.plugin.settings,
-                        db
-                    );
-                } catch (e) {
-                    console.error(`Cleanup error [${feed.name}]:`, e);
-                }
-            }
-        }
-
-        // Orphan pass — delete any vault files whose DB entry is marked as
-        // skip_shorts, skip_live, old_article, or mark_as_read but the file
-        // still exists in the vault.
-        // deleteOrphanedDbArticles loads its own fresh combined DB internally.
-        totalDeleted += await deleteOrphanedDbArticles(
-            this.app.vault,
-            this.app,
-            this.plugin.settings.folderPath
-        );
-
-        // Remove any residual old_article entries from the auto database
-        // now that the pre-save date filter has been removed.
         try {
-            const removed = await cleanOldArticleEntries(this.app);
-            if (removed > 0) {
-                console.log(`RSS Cleanup: removed ${removed} old_article entries from database.`);
+            const { loadAutoDatabase } = await import('./settings/feedDatabase');
+            const db = await loadAutoDatabase(this.app);
+            let totalDeleted = 0;
+
+            const rssFolderPath = normalizePath(this.plugin.settings.folderPath);
+            const allMdFiles = this.app.vault.getMarkdownFiles().filter(f => f.path.startsWith(rssFolderPath + '/'));
+            const totalFiles = allMdFiles.length;
+            const fileCache: FileMeta[] = [];
+
+            for (let i = 0; i < totalFiles; i++) {
+                const f = allMdFiles[i]!;
+                this.plugin.setStatusBarText(`⏳ Saving: ${i + 1}/${totalFiles}`, `Processing ${f.path}`);
+                const link = await resolveLinkFromFile(this.app, this.app.vault, f);
+                const pubDate = await readPubDateFromFrontmatter(this.app, this.app.vault, f);
+                fileCache.push({ file: f, link, pubDate, deleted: false });
             }
-        } catch (e) {
-            console.error('RSS: cleanOldArticleEntries failed:', e);
-        }
 
-        // ── Tag and delete duplicates ─────────────────────────────────────────
-        try {
-            totalDeleted += await tagDuplicatesInVault(this.app, this.plugin);
-        } catch (e) {
-            console.error('RSS: tagDuplicatesInVault failed:', e);
-        }
+            totalDeleted += await runAutoCleanup(this.app, this.plugin, db, fileCache);
 
-        if (totalDeleted === 0) {
-            new Notice('No old or duplicate articles to delete.', 4000);
-        } else {
-            new Notice(`${totalDeleted} article${totalDeleted !== 1 ? 's' : ''} deleted.`, 4000);
+
+            try {
+                this.plugin.setStatusBarText('⏳ Checking Duplicates...');
+                totalDeleted += await tagDuplicatesInVault(this.app, this.plugin, fileCache);
+            } catch (e) {
+                console.error('RSS: tagDuplicatesInVault failed:', e);
+            }
+
+            if (totalDeleted === 0) {
+                new Notice('No old or duplicate articles to delete.', 4000);
+            } else {
+                new Notice(`${totalDeleted} article${totalDeleted !== 1 ? 's' : ''} deleted.`, 4000);
+            }
+        } finally {
+            this.plugin.clearStatusBar();
         }
     }
 

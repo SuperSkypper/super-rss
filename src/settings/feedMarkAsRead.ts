@@ -27,14 +27,14 @@ export const MARK_AS_READ_PROTOCOL = 'rss-mark-as-read';
 export function buildMarkAsReadLink(filePath: string, settings: PluginSettings): string {
     if (!settings.markAsReadEnabled) return '';
 
-    const checkboxProp = settings.markAsReadCheckboxProperty?.trim() || 'Checkbox';
+    const checkboxProp = settings.markAsReadCheckboxProperty?.trim() || 'Read';
 
     // Extract basename without extension — e.g. "RSS/Feed/My Article.md" → "My Article"
     const basename = filePath.split('/').pop()?.replace(/\.md$/i, '') ?? filePath;
 
-    // Standard encoding — Obsidian will decode this automatically
-    const encodedName = encodeURIComponent(basename);
-    const encodedProp = encodeURIComponent(checkboxProp);
+    // Encode + escape % to survive Obsidian's Markdown parsing layer
+    const encodedName = encodeURIComponent(basename).replace(/%/g, '%25');
+    const encodedProp = encodeURIComponent(checkboxProp).replace(/%/g, '%25');
 
     return `[✅ Mark as Read](obsidian://${MARK_AS_READ_PROTOCOL}?file=${encodedName}&property=${encodedProp})`;
 }
@@ -53,8 +53,8 @@ export function buildMarkAsReadLink(filePath: string, settings: PluginSettings):
  * Do NOT decode again here — use params['file'] directly.
  */
 export async function handleMarkAsRead(app: App, params: Record<string, string>): Promise<void> {
-    const basename     = params['file']     ?? '';
-    const propertyKey = params['property'] ? decodeURIComponent(params['property']) : 'Checkbox';
+    const basename    = params['file']     ?? '';
+    const propertyKey = params['property'] ?? 'Read';
 
     if (!basename) {
         new Notice('RSS: Mark as Read — missing file name.');

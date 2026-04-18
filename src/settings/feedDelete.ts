@@ -9,6 +9,13 @@ import {
     registerOldArticle 
 } from './feedDatabase';
 
+export interface FileMeta {
+    file: TFile;
+    link: string | null;
+    pubDate: number | null;
+    deleted: boolean;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 export function toMilliseconds(value: number, unit: 'minutes' | 'hours' | 'days' | 'months'): number {
@@ -87,27 +94,20 @@ export async function readPubDateFromFrontmatter(app: App, vault: Vault, file: T
 
 /**
  * Checks if file is protected by a checkbox property.
+ * Uses Metadata Cache for speed and reliability.
  */
-export async function isFileProtected(vault: Vault, file: TFile, propertyName: string): Promise<boolean> {
-    try {
-        const content = await vault.cachedRead(file);
-        const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-        if (!frontmatterMatch) return true;
+export function isFileProtected(app: App, file: TFile, propertyName: string): boolean {
+    const fm = app.metadataCache.getFileCache(file)?.frontmatter;
+    if (!fm) return true;
 
-        const frontmatter = frontmatterMatch[1] ?? '';
-        for (const line of frontmatter.split('\n')) {
-            const colonIndex = line.indexOf(':');
-            if (colonIndex === -1) continue;
-            const key = line.slice(0, colonIndex).trim().toLowerCase();
-            const value = line.slice(colonIndex + 1).trim().toLowerCase();
-            if (key === propertyName.toLowerCase()) {
-                return value !== 'true';
-            }
-        }
-        return true;
-    } catch {
-        return true;
-    }
+    // Case-insensitive key lookup
+    const foundKey = Object.keys(fm).find(k => k.toLowerCase() === propertyName.toLowerCase());
+    if (!foundKey) return true;
+
+    const val = fm[foundKey];
+    // Property is 'protected' (locked) IF it is NOT explicitly true.
+    // This allows undefined/false to act as protected.
+    return val !== true && String(val).toLowerCase() !== 'true';
 }
 
 // ─── Age-based cleanup ────────────────────────────────────────────────────────
@@ -120,7 +120,8 @@ export async function cleanupOldFiles(
     unit:       'minutes' | 'hours' | 'days' | 'months',
     dateField:  'datepub' | 'datesaved' = 'datesaved',
     settings?:  PluginSettings,
-    autoDb?:    AutoDatabase
+    autoDb?:    AutoDatabase,
+    fileCache?: FileMeta[]
 ): Promise<number> {
     const cutoff = Date.now() - toMilliseconds(value, unit);
     const normalizedFolder = normalizePath(folderPath);
@@ -144,9 +145,55 @@ export async function cleanupOldFiles(
 
     let deletedCount = 0;
 
-    const files = vault.getFiles().filter(f =>
-        f.path.startsWith(normalizedFolder + '/') && f.extension === 'md'
-    );
+    // If fileCache is provided, skip the expensive disk/regex reads
+    if (fileCache) {
+        for (const meta of fileCache) {
+            if (meta.deleted) continue;
+            if (!meta.file.path.startsWith(normalizedFolder + '/')) continue;
+
+            let fileTime: number;
+            if (dateField === 'datepub') {
+                fileTime = meta.pubDate ?? meta.file.stat.ctime;
+            } else {
+                fileTime = meta.file.stat.ctime;
+            }
+
+            if (fileTime >= cutoff) continue;
+
+            if (usePropertyCheck) {
+                const protectedFile = isFileProtected(app, meta.file, propertyName);
+                if (protectedFile) continue;
+            }
+
+            if (!meta.link) {
+                console.warn(`RSS Cleanup: skipping "${meta.file.path}" — no link property found.`);
+                continue;
+            }
+
+            try {
+                await vault.delete(meta.file);
+                meta.deleted = true;
+                deletedCount++;
+
+                await registerOldArticle(
+                    app,
+                    mergedAutoDb,
+                    userDb,
+                    meta.link,
+                    mergedAutoDb[meta.link]?.pubDate ?? String(meta.file.stat.ctime),
+                    markAsReadMode,
+                    meta.file.basename,
+                );
+
+            } catch (e) {
+                console.error(`RSS Cleanup: failed to delete ${meta.file.path}`, e);
+            }
+        }
+    } else {
+        // Fallback for isolated calls
+        const files = vault.getFiles().filter(f =>
+            f.path.startsWith(normalizedFolder + '/') && f.extension === 'md'
+        );
 
     for (const file of files) {
         let fileTime: number;
@@ -160,7 +207,7 @@ export async function cleanupOldFiles(
         if (fileTime >= cutoff) continue;
 
         if (usePropertyCheck) {
-            const protectedFile = await isFileProtected(vault, file, propertyName);
+            const protectedFile = isFileProtected(app, file, propertyName);
             if (protectedFile) continue;
         }
 
@@ -174,19 +221,20 @@ export async function cleanupOldFiles(
             await vault.delete(file);
             deletedCount++;
 
-            // Use registerOldArticle — it handles append to JSONL automatically
             await registerOldArticle(
                 app,
                 mergedAutoDb,
                 userDb,
                 itemLink,
                 mergedAutoDb[itemLink]?.pubDate ?? String(file.stat.ctime),
-                markAsReadMode
+                markAsReadMode,
+                file.basename,
             );
 
         } catch (e) {
             console.error(`RSS Cleanup: failed to delete ${file.path}`, e);
         }
+    }
     }
 
     // Sync back to caller's db reference
@@ -229,10 +277,11 @@ export async function deleteLiveArticlesForFeed(
 
             if (!(itemLink in db)) {
                 db[itemLink] = {
-                    link: itemLink,
-                    pubDate: '',
-                    status: 'skip_live',
-                    ts: Date.now()
+                    ts:      String(Date.now()),
+                    pubDate: '0000000000000',
+                    status:  'skip_live',
+                    link:    itemLink,
+                    title:   file.basename,
                 };
             }
         } catch (e) {
@@ -248,16 +297,38 @@ export async function deleteLiveArticlesForFeed(
 export async function deleteOrphanedDbArticles(
     vault:         Vault,
     app:           App,
-    rssFolderPath: string
+    rssFolderPath: string,
+    fileCache?:    FileMeta[]
 ): Promise<number> {
     const normalizedFolder = normalizePath(rssFolderPath);
     const db = await loadFeedDatabase(app);
 
     const DELETE_STATUSES = new Set(['skip_shorts', 'skip_live', 'old_article', 'mark_as_read']);
 
-    const files = vault.getFiles().filter(f =>
-        f.path.startsWith(normalizedFolder + '/') && f.extension === 'md'
-    );
+    let deletedCount = 0;
+
+    if (fileCache) {
+        for (const meta of fileCache) {
+            if (meta.deleted || !meta.link) continue;
+            if (!meta.file.path.startsWith(normalizedFolder + '/')) continue;
+
+            const entry = db[meta.link];
+            if (!entry || !DELETE_STATUSES.has(entry.status)) continue;
+
+            try {
+                await vault.delete(meta.file);
+                meta.deleted = true;
+                deletedCount++;
+                console.log(`RSS Cleanup (orphan): deleted "${meta.file.path}" (status: ${entry.status})`);
+            } catch (e) {
+                console.error(`RSS Cleanup (orphan): failed to delete "${meta.file.path}"`, e);
+            }
+        }
+    } else {
+        // Fallback for isolated calls
+        const files = vault.getFiles().filter(f =>
+            f.path.startsWith(normalizedFolder + '/') && f.extension === 'md'
+        );
 
     let deletedCount = 0;
 
@@ -276,6 +347,99 @@ export async function deleteOrphanedDbArticles(
             console.error(`RSS Cleanup (orphan): failed to delete "${file.path}"`, e);
         }
     }
+    }
+
+    return deletedCount;
+}
+
+// ─── Mark as Read cleanup ─────────────────────────────────────────────────────
+
+export async function cleanupReadFiles(
+    vault:      Vault,
+    app:        App,
+    folderPath: string,
+    settings:   PluginSettings,
+    autoDb?:    AutoDatabase,
+    fileCache?: FileMeta[]
+): Promise<number> {
+    const normalizedFolder = normalizePath(folderPath);
+    const propertyName = settings.markAsReadCheckboxProperty?.trim() || 'Checkbox';
+    let deletedCount = 0;
+
+    const [diskAutoDb, userDb] = await Promise.all([
+        loadAutoDatabase(app),
+        loadUserDatabase(app)
+    ]);
+
+    const mergedAutoDb: AutoDatabase = autoDb ? { ...diskAutoDb, ...autoDb } : diskAutoDb;
+    if (autoDb) Object.assign(autoDb, diskAutoDb);
+
+    if (fileCache) {
+        for (const meta of fileCache) {
+            if (meta.deleted) continue;
+            if (!meta.file.path.startsWith(normalizedFolder + '/')) continue;
+
+            const isProtected = isFileProtected(app, meta.file, propertyName);
+            if (isProtected) continue; // Property is NOT true
+
+            if (!meta.link) {
+                console.warn(`RSS Cleanup (Read): skipping "${meta.file.path}" — no link property found.`);
+                continue;
+            }
+
+            try {
+                await vault.delete(meta.file);
+                meta.deleted = true;
+                deletedCount++;
+
+                await registerOldArticle(
+                    app,
+                    mergedAutoDb,
+                    userDb,
+                    meta.link,
+                    mergedAutoDb[meta.link]?.pubDate ?? String(meta.file.stat.ctime),
+                    true, // Always save as mark_as_read
+                    meta.file.basename,
+                );
+            } catch (e) {
+                console.error(`RSS Cleanup (Read): failed to delete ${meta.file.path}`, e);
+            }
+        }
+    } else {
+        const files = vault.getFiles().filter(f =>
+            f.path.startsWith(normalizedFolder + '/') && f.extension === 'md'
+        );
+
+        for (const file of files) {
+            const isProtected = isFileProtected(app, file, propertyName);
+            if (isProtected) continue;
+
+            const itemLink = await resolveLinkFromFile(app, vault, file);
+            if (!itemLink) {
+                console.warn(`RSS Cleanup (Read): skipping "${file.path}" — no link property found.`);
+                continue;
+            }
+
+            try {
+                await vault.delete(file);
+                deletedCount++;
+
+                await registerOldArticle(
+                    app,
+                    mergedAutoDb,
+                    userDb,
+                    itemLink,
+                    mergedAutoDb[itemLink]?.pubDate ?? String(file.stat.ctime),
+                    true, // Always save as mark_as_read
+                    file.basename,
+                );
+            } catch (e) {
+                console.error(`RSS Cleanup (Read): failed to delete ${file.path}`, e);
+            }
+        }
+    }
+
+    if (autoDb) Object.assign(autoDb, mergedAutoDb);
 
     return deletedCount;
 }
@@ -285,27 +449,34 @@ export async function deleteOrphanedDbArticles(
 export async function runAutoCleanup(
     app:    App,
     plugin: RssPlugin,
-    db:     AutoDatabase
+    db:     AutoDatabase,
+    fileCache?: FileMeta[]
 ): Promise<number> {
     const enabledFeeds = plugin.settings.feeds.filter(f => f.enabled && f.url && !f.deleted);
     let totalDeleted = 0;
 
-    if (plugin.settings.autoCleanupValue > 0) {
-        const feedsWithoutOverride = enabledFeeds.filter(
-            f => f.autoCleanupValue == null || f.autoCleanupValue <= 0
-        );
+    for (let i = 0; i < enabledFeeds.length; i++) {
+        const feed = enabledFeeds[i]!;
+        const feedPath = resolveFeedPath(feed, plugin.settings);
+        const feedCleanupValue = feed.autoCleanupValue ?? plugin.settings.autoCleanupValue;
+        const feedCleanupUnit = feed.autoCleanupUnit ?? plugin.settings.autoCleanupUnit;
+        const feedDateField = (!feed.autoCleanupDateField || feed.autoCleanupDateField === 'global')
+             ? plugin.settings.autoCleanupDateField 
+             : feed.autoCleanupDateField;
 
-        for (const feed of feedsWithoutOverride) {
-            const feedPath = resolveFeedPath(feed, plugin.settings);
+        plugin.setStatusBarText(`⏳ Cleaning Feeds: ${i + 1}/${enabledFeeds.length}`, `Cleaning ${feed.name || feed.url}`);
+
+        if (feedCleanupValue != null && feedCleanupValue > 0) {
             totalDeleted += await cleanupOldFiles(
                 app.vault,
                 app,
                 feedPath,
-                plugin.settings.autoCleanupValue,
-                plugin.settings.autoCleanupUnit,
-                plugin.settings.autoCleanupDateField,
+                feedCleanupValue,
+                feedCleanupUnit,
+                feedDateField,
                 plugin.settings,
-                db
+                db,
+                fileCache
             );
         }
     }
@@ -313,8 +484,20 @@ export async function runAutoCleanup(
     totalDeleted += await deleteOrphanedDbArticles(
         app.vault,
         app,
-        plugin.settings.folderPath
+        plugin.settings.folderPath,
+        fileCache
     );
+
+    if (plugin.settings.markAsReadEnabled && plugin.settings.markAsReadDeleteArticles) {
+        totalDeleted += await cleanupReadFiles(
+            app.vault,
+            app,
+            plugin.settings.folderPath,
+            plugin.settings,
+            db,
+            fileCache
+        );
+    }
 
     return totalDeleted;
 }

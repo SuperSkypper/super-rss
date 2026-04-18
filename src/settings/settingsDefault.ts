@@ -78,6 +78,7 @@ export interface PluginSettings {
     markAsReadEnabled:              boolean;
     markAsReadLinkProperty:         string;
     markAsReadCheckboxProperty:     string;
+    markAsReadDeleteArticles:       boolean;
 }
 
 // ─── Template constants ───────────────────────────────────────────────────────
@@ -121,7 +122,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
     autoCleanupUnit:             'days',
     autoCleanupDateField:        'datesaved',
     autoCleanupCheckProperty:    false,
-    autoCleanupCheckPropertyName: 'Mark as Read',
+    autoCleanupCheckPropertyName: 'Read',
     feeds:                       [],
     groups:                      [],
     downloadImages:              false,
@@ -139,5 +140,6 @@ export const DEFAULT_SETTINGS: PluginSettings = {
     ribbonAdd:                   true,
     markAsReadEnabled:              true,
     markAsReadLinkProperty:         'Mark as Read',
-    markAsReadCheckboxProperty:     'Checkbox',
+    markAsReadCheckboxProperty:     'Read',
+    markAsReadDeleteArticles:       false,
 };

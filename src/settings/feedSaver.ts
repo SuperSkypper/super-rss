@@ -3,30 +3,10 @@ import { FeedItem, FeedConfig, PluginSettings } from '../main';
 import { sanitizeFileName } from './feedProcessor';
 import { downloadImageLocally, resolveObsidianAttachmentPath } from './imageHandler';
 import { buildMarkAsReadLink } from './feedMarkAsRead';
+import { injectDuplicateTag } from './feedDuplicate';
 import { loadCombinedDatabase, loadAutoDatabase, loadUserDatabase, saveAutoDatabase, saveUserDatabase, registerAuto, isKnown, getStatus, AutoDatabase, UserDatabase } from './feedDatabase';
 import { cleanupOldFiles, deleteOrphanedDbArticles } from './feedDelete';
 export { cleanupOldFiles, deleteOrphanedDbArticles } from './feedDelete';
-
-// ─── Database cleanup ─────────────────────────────────────────────────────────
-
-/**
- * Removes all entries with status 'old_article' from the auto database.
- * Call this once after migrating away from the pre-save date filter so that
- * previously blocked articles can be re-imported on the next feed refresh.
- */
-export async function cleanOldArticleEntries(app: App): Promise<number> {
-    const db = await loadAutoDatabase(app);
-    let removed = 0;
-    for (const link of Object.keys(db)) {
-        if (db[link]?.status === 'old_article') {
-            delete db[link];
-            removed++;
-        }
-    }
-    if (removed > 0) await saveAutoDatabase(app, db);
-    return removed;
-}
-import { injectDuplicateTag } from './feedDuplicate';
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
@@ -183,7 +163,7 @@ export async function saveFeedItem(
 
     // ── Skip YouTube Shorts ───────────────────────────────────────────────────
     if (skipShortsEnabled && isYoutubeShort(item.link ?? '')) {
-        registerAuto(db, itemLink, item.pubDate, 'skip_shorts');
+        registerAuto(db, itemLink, item.pubDate, 'skip_shorts', item.title ?? '');
         if (ownDb) await saveAutoDatabase(app, db);
         return false;
     }
@@ -196,7 +176,7 @@ export async function saveFeedItem(
     // per-feed deleteLives flag is explicitly set AND the item looks like a live.
     const skipLiveEnabled = feed.deleteLives === true;
     if (skipLiveEnabled && isLiveStream(item.title ?? '', settings.tagLiveKeywords ?? '')) {
-        registerAuto(db, itemLink, item.pubDate, 'skip_live');
+        registerAuto(db, itemLink, item.pubDate, 'skip_live', item.title ?? '');
         if (ownDb) await saveAutoDatabase(app, db);
         return false;
     }
