@@ -6,36 +6,38 @@ An Obsidian plugin that fetches RSS feeds and saves articles as notes in your va
 
 
 ## ✨ Features
-**📁 Feed organization**
+**📁 Feed Organization**
+- Batch edit feeds.
 - Group feeds into collapsible folders
 - Folders rename automatically when feeds are moved or edited
 
-**🗒️ Note templates**
-- Control filename, frontmatter, and content using template variables (see table below)
+**🗒️ Note Templates**
+- Control filename, frontmatter, and content using template variables.
 - Override global settings per feed (fetch interval, template, cleanup rules)
 
 **🔍 Deduplication**
-- Scans your entire rss folder before importing to avoid duplicate notes.
-- Tracks imported entries in a local database
+- Scans your rss folder before importing to avoid duplicate notes.
+- Tracks imported entries in a local database.
 
-**🧹 Auto-cleanup**
-- Delete old notes automatically after a configurable period
-- Choose whether to measure age by publication date or saved date
+**🧹 Auto-Cleanup**
+- Delete old notes automatically after a configurable period.
+- Choose whether to measure age by publication date or saved date.
 - Skip cleanup for notes that have a specific property checked.
 
 **✅ Mark as Read**
 - URI handler lets you mark items as read from within a note
 - Optional: delete the note automatically on mark as read
+- Mark as read in Obsidian Bases.
 
 **🖼️ Images**
-- Download images locally to your vault (default folder, feed folder, or a custom subfolder)
-- Falls back to scraping OpenGraph/Twitter meta tags if the feed doesn't include an image
+- Link images from articles to your notes.
+- Optional: download images locally to your vault.
 
 **▶️ YouTube**
+- Automatically detect youtube rss by channel link.
 - Picks the highest available thumbnail resolution
-- Option to skip Shorts or live streams
-- Auto-tags items as `#shorts` or `#live` based on URL structure and configurable title keywords
 - Fetches video duration for YouTube links
+- Optional: Toggle to skip shorts or live streams
 
 
 ## 📦 Installation
