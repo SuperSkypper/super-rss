@@ -4,11 +4,11 @@ A powerful, high-performance RSS reader plugin for [Obsidian](https://obsidian.m
 
 ## 🚀 Key Features
 
-### 📺 Smart YouTube Engine
-- **Quality Selection**: Automatically identifies and selects the highest available resolution for thumbnails (`MaxRes`, `720p`, etc.) for a premium visual experience.
-- **Content Filtering**: Pure flexibility to **Skip YouTube Shorts** or **Skip Live Streams** entirely, keeping your vault focused on long-form content.
-- **Intelligent Tagging**: Automatic detection and injection of `#shorts` or `#live` tags based on link structure and customizable title keywords (e.g., `live, stream, 🔴`).
-- **Time Tracking**: Automatically fetches video duration for YouTube links to help you manage your discovery.
+### ⚙️ Total Customization
+- **Nested Organization**: Support for collapsible **Groups** and automatic folder renaming when feeds are moved or edited.
+- **Template Power**: Full control over Filenames, Frontmatter, and Content using a comprehensive variable system.
+- **Per-Feed Overrides**: Global settings too broad? Customize intervals, templates, and cleanup rules for each individual feed.
+- **Mark as Read**: Integrated URI handler for one-click status updates. Includes an optional **Delete on Mark as Read** mode.
 
 ### 🛡️ Smart Deduplication & Sync
 - **Vault-Wide Scanning**: Automatically checks your existing notes to prevent duplicate imports, even if you move files across different folders.
@@ -24,11 +24,11 @@ A powerful, high-performance RSS reader plugin for [Obsidian](https://obsidian.m
 - **Meta-Image Scraper**: If a feed lacks an image, Super RSS automatically scrapes the source URL for OpenGraph and Twitter meta tags.
 - **High-Res Thumbnails**: Optimized for beautiful Gallery and Card views (like Obsidian Bases).
 
-### ⚙️ Total Customization
-- **Nested Organization**: Support for collapsible **Groups** and automatic folder renaming when feeds are moved or edited.
-- **Template Power**: Full control over Filenames, Frontmatter, and Content using a comprehensive variable system.
-- **Per-Feed Overrides**: Global settings too broad? Customize intervals, templates, and cleanup rules for each individual feed.
-- **Mark as Read**: Integrated URI handler for one-click status updates. Includes an optional **Delete on Mark as Read** mode.
+### 📺 Smart YouTube Engine
+- **Quality Selection**: Automatically identifies and selects the highest available resolution for thumbnails (`MaxRes`, `720p`, etc.) for a premium visual experience.
+- **Content Filtering**: Pure flexibility to **Skip YouTube Shorts** or **Skip Live Streams** entirely, keeping your vault focused on long-form content.
+- **Intelligent Tagging**: Automatic detection and injection of `#shorts` or `#live` tags based on link structure and customizable title keywords (e.g., `live, stream, 🔴`).
+- **Time Tracking**: Automatically fetches video duration for YouTube links to help you manage your discovery.
 
 ## 📦 Installation
 
