@@ -31,10 +31,10 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          body_path: CHANGELOG.md
           files: |
             main.js
             manifest.json
             styles.css
             super-rss.zip
-          generate_release_notes: true
           prerelease: true
