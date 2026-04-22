@@ -28,10 +28,13 @@ jobs:
       - name: Package plugin zip
         run: zip super-rss.zip main.js manifest.json styles.css CHANGELOG.md versions.json LICENSE README.md
 
+      - name: Extract latest version from CHANGELOG
+        run: awk '/^# Changelog - v/{if (count++) exit} {print}' CHANGELOG.md > latest_changelog.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          body_path: CHANGELOG.md
+          body_path: latest_changelog.md
           files: |
             main.js
             manifest.json

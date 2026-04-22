@@ -1,3 +1,10 @@
+# Changelog - v0.0.5 (Pre-release)
+
+## 🔧 Technical Updates
+- **Dependency Update**: Updated `defuddle` to version `0.18.1`, improving article content extraction with its latest features and bug fixes.
+- **URI Protocol Fix**: Simplified URI encoding for "Mark as Read" functionality to ensure reliable file resolution.
+- **Stability**: Improvements to the internal lockfile system and ESLint configuration.
+
 # Changelog - v0.0.4 (Pre-release)
 
 ## 🚀 New Features & Improvements
