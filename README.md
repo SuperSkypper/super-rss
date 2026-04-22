@@ -2,18 +2,17 @@
 
 An Obsidian plugin that fetches RSS feeds and saves articles as notes in your vault.
 
-> Not yet available on the Community Plugins directory. Manual installation only.
-
+> Not yet available on the Community Plugins directory. Manual installation or via BRAT.
 
 ## ✨ Features
-**📁 Feed Organization**
-- Batch edit feeds.
-- Group feeds into collapsible folders
-- Folders rename automatically when feeds are moved or edited
-
 **🗒️ Note Templates**
 - Control filename, frontmatter, and content using template variables.
-- Override global settings per feed (fetch interval, template, cleanup rules)
+- Override global settings per feed (fetch interval, template, cleanup rules).
+
+**📁 Feed Organization**
+- Batch edit feeds.
+- Group feeds into collapsible folders.
+- Folders rename automatically when feeds are moved or edited.
 
 **🔍 Deduplication**
 - Scans your rss folder before importing to avoid duplicate notes.
@@ -25,8 +24,8 @@ An Obsidian plugin that fetches RSS feeds and saves articles as notes in your va
 - Skip cleanup for notes that have a specific property checked.
 
 **✅ Mark as Read**
-- URI handler lets you mark items as read from within a note
-- Optional: delete the note automatically on mark as read
+- URI handler lets you mark items as read from within a note.
+- Optional: delete the note automatically on mark as read.
 - Mark as read in Obsidian Bases.
 
 **🖼️ Images**
@@ -35,9 +34,9 @@ An Obsidian plugin that fetches RSS feeds and saves articles as notes in your va
 
 **▶️ YouTube**
 - Automatically detect youtube rss by channel link.
-- Picks the highest available thumbnail resolution
-- Fetches video duration for YouTube links
-- Optional: Toggle to skip shorts or live streams
+- Picks the highest available thumbnail resolution.
+- Fetches video duration for YouTube links.
+- Optional: Toggle to skip shorts or live streams.
 
 
 ## 📦 Installation

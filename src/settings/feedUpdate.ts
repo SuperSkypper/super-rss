@@ -11,7 +11,7 @@ import { extractImageUrl, upgradeYoutubeThumbnail } from './imageHandler';
 // ── Update lockfile ───────────────────────────────────────────────────────────
 
 const PLUGIN_ID   = 'super-rss';
-const LOCK_FILE   = 'update.lock';
+const LOCK_FILE   = 'update-lock.json';
 const LOCK_TTL_MS = 5 * 60 * 1000;
 
 interface LockData {

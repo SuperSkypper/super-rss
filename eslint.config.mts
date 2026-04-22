@@ -1,5 +1,7 @@
 import tseslint from 'typescript-eslint';
 import obsidianmd from "eslint-plugin-obsidianmd";
+const obsidianmdConfigs = (obsidianmd as any).configs;
+
 import globals from "globals";
 import { globalIgnores } from "eslint/config";
 
@@ -21,7 +23,7 @@ export default tseslint.config(
 			},
 		},
 	},
-	...obsidianmd.configs.recommended,
+	...(obsidianmdConfigs!.recommended as Iterable<any>),
 	globalIgnores([
 		"node_modules",
 		"dist",

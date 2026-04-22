@@ -32,9 +32,10 @@ export function buildMarkAsReadLink(filePath: string, settings: PluginSettings):
     // Extract basename without extension — e.g. "RSS/Feed/My Article.md" → "My Article"
     const basename = filePath.split('/').pop()?.replace(/\.md$/i, '') ?? filePath;
 
-    // Encode + escape % to survive Obsidian's Markdown parsing layer
-    const encodedName = encodeURIComponent(basename).replace(/%/g, '%25');
-    const encodedProp = encodeURIComponent(checkboxProp).replace(/%/g, '%25');
+    // Standard encodeURIComponent is sufficient — Obsidian decodes URI parameters
+    // once before passing them to the protocol handler.
+    const encodedName = encodeURIComponent(basename);
+    const encodedProp = encodeURIComponent(checkboxProp);
 
     return `[✅ Mark as Read](obsidian://${MARK_AS_READ_PROTOCOL}?file=${encodedName}&property=${encodedProp})`;
 }
@@ -48,8 +49,8 @@ export function buildMarkAsReadLink(filePath: string, settings: PluginSettings):
  * Register in main.ts via plugin.registerObsidianProtocolHandler().
  *
  * Note: Obsidian decodes URI parameters once before calling this handler.
- * The builder's double-encoding (encode + escape %) ensures that after
- * Obsidian's single decode, params['file'] contains the original basename.
+ * Using standard encodeURIComponent ensures that after Obsidian's single decode,
+ * params['file'] contains the correct decoded basename.
  * Do NOT decode again here — use params['file'] directly.
  */
 export async function handleMarkAsRead(app: App, params: Record<string, string>): Promise<void> {
