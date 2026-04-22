@@ -40,8 +40,8 @@ An Obsidian plugin that fetches RSS feeds and saves articles as notes in your va
 
 
 ## 📦 Installation
-1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/SuperSkypper/super-rss/releases).
-2. Create the folder `<your vault>/.obsidian/plugins/super-rss/`.
+1. Download `super-rss.zip` from the [latest release](https://github.com/SuperSkypper/super-rss/releases).
+2. Extract to the folder `<your vault>/.obsidian/plugins/super-rss/`.
 3. Copy the three files into that folder.
 4. Restart Obsidian and enable **Super RSS** under **Settings → Community plugins**.
 
