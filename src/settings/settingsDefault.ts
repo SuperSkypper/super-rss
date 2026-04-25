@@ -86,19 +86,19 @@ export interface PluginSettings {
 const DEFAULT_FILENAME_TEMPLATE = '{{title}}';
 
 // All variables available in frontmatter scope:
-// {{title}}, {{author}}, {{datepub}}, {{datesaved}}, {{snippet}}, {{feedname}},
-// {{link}}, {{image}}, {{duration}}, {{#tags}}
+// {{title}}, {{author}}, {{datepublished}}, {{datesaved}}, {{snippet}}, {{feedname}},
+// {{link}}, {{image}}, {{ytduration}}, {{tags}}
 const DEFAULT_FRONTMATTER_TEMPLATE =
 `Title: {{title}}
 Author: {{author}}
 Feed: {{feedname}}
 Link: {{link}}
 Image: {{image}}
-Duration: {{duration}}
-Date Published: {{datepub}}
+Duration: {{ytduration}}
+Date Published: {{datepublished}}
 Date Saved: {{datesaved}}
 Snippet: {{snippet}}
-Tags: {{#tags}}`;
+Tags: {{tags}}`;
 
 // All variables available in content scope (includes {{content}}):
 const DEFAULT_CONTENT_TEMPLATE =

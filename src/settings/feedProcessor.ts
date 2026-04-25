@@ -9,8 +9,11 @@ export function processItem(raw: RawFeedItem): FeedItem {
 
     // Inject the hero image at the top of the content when present and not
     // already referenced inside the content body (avoids duplicates).
+    // Skip for YouTube links — the content already contains the video embed,
+    // so the thumbnail would be redundant.
     const imageUrl  = raw.imageUrl || '';
-    const heroEmbed = imageUrl && !content.includes(imageUrl)
+    const isYoutube = /youtube\.com|youtu\.be/i.test(link);
+    const heroEmbed = imageUrl && !isYoutube && !content.includes(imageUrl)
         ? `![](${imageUrl})\n\n`
         : '';
 

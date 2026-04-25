@@ -286,14 +286,14 @@ export function openBulkEditModal(
                 const criterionLabel = criterionWrapper.createEl('p', { text: 'Date Criterion — Which date field to use.' });
                 criterionLabel.style.cssText = 'font-size: 0.82em; color: var(--text-muted); margin: 0 0 6px;';
                 const globalDateLabel = plugin.settings.autoCleanupDateField === 'datepub'
-                    ? 'Global ({{datepub}})'
+                    ? 'Global ({{datepublished}})'
                     : 'Global ({{datesaved}})';
                 const dateSelect = criterionWrapper.createEl('select');
                 dateSelect.style.cssText = `font-size: ${inputFontSize()};`;
                 for (const [val, txt] of [
                     ['global',    globalDateLabel],
                     ['datesaved', '{{datesaved}} — Date saved'],
-                    ['datepub',   '{{datepub}} — Date published'],
+                    ['datepub',   '{{datepublished}} — Date published'],
                 ]) {
                     dateSelect.createEl('option', { value: val, text: txt });
                 }
@@ -375,7 +375,7 @@ export function openBulkEditModal(
                 });
             };
 
-            renderField('titleTemplate',       '📄', 'File Name',               'Variables: {{title}}, {{author}}, {{datepub}}, {{datesaved}}, {{snippet}}, {{feedname}}', '{{title}}',                                                     'titleTemplate',       'input');
+            renderField('titleTemplate',       '📄', 'File Name',               'Variables: {{title}}, {{author}}, {{datepublished}}, {{datesaved}}, {{snippet}}, {{feedname}}', '{{title}}',                                                     'titleTemplate',       'input');
             renderField('frontmatterTemplate', '🗂️', 'Properties / Frontmatter', 'Support all variables except {{content}}',                                               plugin.settings.frontmatterTemplate || '(use global template)',  'frontmatterTemplate', 'textarea');
             renderField('contentTemplate',     '✍️', 'Content Body',             'All variables',                                                                           plugin.settings.template             || '(use global template)',  'contentTemplate',     'textarea');
         }

@@ -8,28 +8,27 @@ export type VariableScope = 'filename' | 'frontmatter' | 'content';
 
 export interface TemplateVariable {
     tag: string;
-    desc: string;
     scopes: VariableScope[];
 }
 
 export const SCOPE_ICONS: { scope: VariableScope; icon: string; label: string }[] = [
-    { scope: 'filename',    icon: '📄', label: 'File Name' },
+    { scope: 'filename', icon: '📄', label: 'File Name' },
     { scope: 'frontmatter', icon: '🗂️', label: 'Frontmatter' },
-    { scope: 'content',     icon: '✍️', label: 'Content' },
+    { scope: 'content', icon: '✍️', label: 'Content' },
 ];
 
 export const TEMPLATE_VARIABLES: TemplateVariable[] = [
-    { tag: '{{title}}',     desc: 'Title',             scopes: ['filename', 'frontmatter', 'content'] },
-    { tag: '{{author}}',    desc: 'Author',             scopes: ['filename', 'frontmatter', 'content'] },
-    { tag: '{{datepub}}',   desc: 'Date Published',     scopes: ['filename', 'frontmatter', 'content'] },
-    { tag: '{{datesaved}}', desc: 'Date Saved',         scopes: ['filename', 'frontmatter', 'content'] },
-    { tag: '{{snippet}}',   desc: 'Snippet',            scopes: ['filename', 'frontmatter', 'content'] },
-    { tag: '{{feedname}}',  desc: 'Feed Name',          scopes: ['filename', 'frontmatter', 'content'] },
-    { tag: '{{link}}',      desc: 'Link',               scopes: ['frontmatter', 'content'] },
-    { tag: '{{image}}',     desc: 'Image Link',         scopes: ['frontmatter', 'content'] },
-    { tag: '{{duration}}',  desc: 'Duration (YouTube)', scopes: ['frontmatter', 'content'] },
-    { tag: '{{#tags}}',     desc: 'Tags',               scopes: ['frontmatter', 'content'] },
-    { tag: '{{content}}',   desc: 'Full Content',       scopes: ['content'] },
+    { tag: '{{title}}',         scopes: ['filename', 'frontmatter', 'content'] },
+    { tag: '{{author}}',        scopes: ['filename', 'frontmatter', 'content'] },
+    { tag: '{{datepublished}}', scopes: ['filename', 'frontmatter', 'content'] },
+    { tag: '{{datesaved}}',     scopes: ['filename', 'frontmatter', 'content'] },
+    { tag: '{{snippet}}',       scopes: ['filename', 'frontmatter', 'content'] },
+    { tag: '{{feedname}}',      scopes: ['filename', 'frontmatter', 'content'] },
+    { tag: '{{link}}',          scopes: ['frontmatter', 'content'] },
+    { tag: '{{image}}',         scopes: ['frontmatter', 'content'] },
+    { tag: '{{ytduration}}',    scopes: ['frontmatter', 'content'] },
+    { tag: '{{tags}}',          scopes: ['frontmatter', 'content'] },
+    { tag: '{{content}}',       scopes: ['content'] },
 ];
 
 export async function copyToClipboard(text: string): Promise<void> {
@@ -154,14 +153,14 @@ export function renderVariableReference(containerEl: HTMLElement): void {
     // Variable grid
     const grid = infoBox.createDiv();
     grid.setAttribute('role', 'list');
-    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:6px;';
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:6px;';
 
     TEMPLATE_VARIABLES.forEach(v => {
         const row = grid.createDiv({
             attr: {
                 role: 'listitem',
                 tabindex: '0',
-                'aria-label': `Copy variable ${v.tag} — ${v.desc}`,
+                'aria-label': `Copy variable ${v.tag}`,
             },
         });
         row.style.cssText = ROW_STYLE + (isTouchDevice() ? 'min-height:44px;' : '');
@@ -179,14 +178,8 @@ export function renderVariableReference(containerEl: HTMLElement): void {
             el.style.opacity = v.scopes.includes(scope) ? '1' : '0.15';
         });
 
-        const textGroup = row.createDiv();
-        textGroup.style.cssText = 'display:flex;flex-direction:column;gap:1px;min-width:0;';
-
-        const descEl = textGroup.createEl('span', { text: v.desc });
-        descEl.style.cssText = 'color:var(--text-normal);font-size:0.92em;font-weight:500;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-
-        const codeEl = textGroup.createEl('code', { text: v.tag });
-        codeEl.style.cssText = 'color:var(--text-accent);font-size:0.78em;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+        const tagEl = row.createEl('span', { text: v.tag });
+        tagEl.style.cssText = 'color:var(--text-accent);font-size:0.92em;font-weight:500;line-height:1.2;white-space:nowrap;';
 
         const handleCopy = async () => {
             try {
@@ -226,7 +219,7 @@ function renderFileNameSetting(
     createCardHeader(wrapper, '📄', 'File Name');
 
     const desc = wrapper.createEl('p', {
-        text: 'Variables permitted: {{title}}, {{author}}, {{datepub}}, {{datesaved}}, {{snippet}}, {{feedname}}.',
+        text: 'Variables permitted: {{title}}, {{author}}, {{datepublished}}, {{datesaved}}, {{snippet}}, {{feedname}}.',
     });
     desc.style.cssText = 'color:var(--text-muted);font-size:0.85em;margin:0 0 8px;';
 
@@ -262,16 +255,16 @@ const TEXTAREA_CONFIG: Record<TextAreaTarget, {
     key: TemplateSettingsKey;
 }> = {
     frontmatter: {
-        icon:  '🗂️',
+        icon: '🗂️',
         title: 'Properties / Frontmatter',
-        desc:  'Supports all variables except {{content}}.',
-        key:   'frontmatterTemplate',
+        desc: 'Supports all variables except {{content}}.',
+        key: 'frontmatterTemplate',
     },
     content: {
-        icon:  '✍️',
+        icon: '✍️',
         title: 'Content Body',
-        desc:  'All variables are available here.',
-        key:   'template',
+        desc: 'All variables are available here.',
+        key: 'template',
     },
 };
 

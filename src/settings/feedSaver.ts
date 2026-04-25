@@ -344,8 +344,8 @@ function escapeYamlValue(value: any): string {
 }
 
 const KNOWN_PLACEHOLDERS = new Set([
-    'title', 'link', 'snippet', 'image', 'datepub', 'datesaved',
-    'content', 'feedname', 'tags', 'author',
+    'title', 'link', 'snippet', 'image', 'datepublished', 'datepub', 'datesaved',
+    'content', 'feedname', 'tags', 'author', 'ytduration', 'duration',
 ]);
 
 export function applyTemplate(
@@ -441,10 +441,14 @@ export function applyTemplate(
         .replace(/{{link}}/g,       isYaml ? `"${escapeYamlValue(item.link ?? '')}"` : String(item.link ?? ''))
         .replace(/{{snippet}}/g,    isYaml ? `"${escapeYamlValue(item.descriptionShort ?? item.description ?? '')}"` : String(item.descriptionShort ?? item.description ?? ''))
         .replace(/{{image}}/g,      imageValue)
-        .replace(/{{datepub}}/g,    datePub)
-        .replace(/{{datesaved}}/g,  resolvedDateSaved)
-        .replace(/{{content}}/g,    renderContent())
-        .replace(/{{#tags}}/g,      tags);
+        .replace(/{{datepublished}}/g, datePub)
+        .replace(/{{datepub}}/g,       datePub)          // backward compat
+        .replace(/{{datesaved}}/g,     resolvedDateSaved)
+        .replace(/{{content}}/g,       renderContent())
+        .replace(/{{ytduration}}/g,    sanitize(item.duration ?? ''))
+        .replace(/{{duration}}/g,      sanitize(item.duration ?? ''))  // backward compat
+        .replace(/{{tags}}/g,          tags)
+        .replace(/{{#tags}}/g,         tags);             // backward compat
 
     result = result.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => {
         if (KNOWN_PLACEHOLDERS.has(key.toLowerCase())) return '';

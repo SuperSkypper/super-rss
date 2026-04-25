@@ -306,7 +306,7 @@ export class FeedEditModal extends Modal {
             deleteAfterSetting.settingEl.style.borderLeft = '3px solid var(--interactive-accent)';
 
             const globalDateLabel = this.plugin.settings.autoCleanupDateField === 'datepub'
-                ? 'Global ({{datepub}})'
+                ? 'Global ({{datepublished}})'
                 : 'Global ({{datesaved}})';
 
             const criterionSetting = new Setting(container)
@@ -315,7 +315,7 @@ export class FeedEditModal extends Modal {
                 .addDropdown(dropdown => dropdown
                     .addOption('global',    globalDateLabel)
                     .addOption('datesaved', '{{datesaved}} — Date saved')
-                    .addOption('datepub',   '{{datepub}} — Date published')
+                    .addOption('datepub',   '{{datepublished}} — Date published')
                     .setValue(this.feed.autoCleanupDateField ?? 'global')
                     .onChange(v => {
                         this.feed.autoCleanupDateField = v as 'global' | 'datepub' | 'datesaved';
@@ -454,7 +454,7 @@ export class FeedEditModal extends Modal {
         this.renderCustomField(templatesContainer, {
             icon:        '📄',
             title:       'File Name',
-            desc:        'Variables: {{title}}, {{author}}, {{datepub}}, {{datesaved}}, {{snippet}}, {{feedname}}',
+            desc:        'Variables: {{title}}, {{author}}, {{datepublished}}, {{datesaved}}, {{snippet}}, {{feedname}}',
             placeholder: '{{title}}',
             value:       this.feed.titleTemplate || '',
             type:        'input',
