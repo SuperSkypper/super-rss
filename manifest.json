@@ -1,7 +1,7 @@
 {
 	"id": "super-rss",
 	"name": "Super RSS",
-	"version": "0.0.5",
+	"version": "1.0.0",
 	"minAppVersion": "1.4.0",
 	"description": "The Super RSS Plugin for Obsidian.",
 	"author": "@SuperSkypper",

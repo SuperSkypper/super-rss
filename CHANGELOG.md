@@ -1,3 +1,14 @@
+# Changelog - v1.0.0
+
+## New features & improvements
+- Added the frontmatter migration settings flow.
+- Expanded template and feed settings controls for the first stable release.
+- Improved feed cleanup, duplication, mark-as-read, and saver behavior.
+
+## Technical updates
+- Prepared release automation for stable GitHub releases.
+- Updated plugin metadata and version mappings for `1.0.0`.
+
 # Changelog - v0.0.5 (Pre-release)
 
 ## 🔧 Technical Updates
