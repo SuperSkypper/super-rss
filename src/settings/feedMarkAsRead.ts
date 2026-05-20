@@ -1,4 +1,4 @@
-import { App, Notice } from 'obsidian';
+import { App, Notice, normalizePath, TFile } from 'obsidian';
 import { PluginSettings } from '../main';
 
 // ─── URI protocol ─────────────────────────────────────────────────────────────
@@ -10,9 +10,8 @@ export const MARK_AS_READ_PROTOCOL = 'rss-mark-as-read';
 /**
  * Builds the markdown link injected as a frontmatter property value.
  *
- * Uses the file basename (no path, no .md) as identifier — same approach as
- * QuickAdd's checkbox toggle script — to avoid vault-routing issues with
- * obsidian:// URIs. The handler finds the file by basename search.
+ * Uses the normalized vault path as identifier to avoid changing the wrong file
+ * when two notes share the same basename in different feed folders.
  *
  * The link property and the checkbox property are separate:
  *   - markAsReadLinkProperty     → holds this link (static, never changes)
@@ -20,52 +19,51 @@ export const MARK_AS_READ_PROTOCOL = 'rss-mark-as-read';
  *
  * URI encoding note:
  *   Obsidian automatically decodes URI parameters before passing them
- *   to the protocol handler. Standard encodeURIComponent() is sufficient —
- *   no double-encoding needed. The handler uses params['file'] directly
- *   (already decoded) to find the file by basename.
+ *   to the protocol handler. Standard encodeURIComponent() is sufficient.
  */
 export function buildMarkAsReadLink(filePath: string, settings: PluginSettings): string {
     if (!settings.markAsReadEnabled) return '';
 
     const checkboxProp = settings.markAsReadCheckboxProperty?.trim() || 'Read';
 
-    // Extract basename without extension — e.g. "RSS/Feed/My Article.md" → "My Article"
-    const basename = filePath.split('/').pop()?.replace(/\.md$/i, '') ?? filePath;
-
-    // Standard encodeURIComponent is sufficient — Obsidian decodes URI parameters
-    // once before passing them to the protocol handler.
-    const encodedName = encodeURIComponent(basename);
+    const encodedPath = encodeURIComponent(normalizePath(filePath));
     const encodedProp = encodeURIComponent(checkboxProp);
 
-    return `[✅ Mark as Read](obsidian://${MARK_AS_READ_PROTOCOL}?file=${encodedName}&property=${encodedProp})`;
+    return `[✅ Mark as Read](obsidian://${MARK_AS_READ_PROTOCOL}?file=${encodedPath}&property=${encodedProp})`;
 }
 
 // ─── URI handler ──────────────────────────────────────────────────────────────
 
 /**
- * Handles obsidian://rss-mark-as-read?file=<basename>&property=<name>
+ * Handles obsidian://rss-mark-as-read?file=<vault-path>&property=<name>
  *
- * Finds the file by basename and toggles the checkbox property.
+ * Finds the file by exact vault path and toggles the checkbox property.
  * Register in main.ts via plugin.registerObsidianProtocolHandler().
  *
  * Note: Obsidian decodes URI parameters once before calling this handler.
  * Using standard encodeURIComponent ensures that after Obsidian's single decode,
- * params['file'] contains the correct decoded basename.
+ * params['file'] contains the correct decoded vault path.
  * Do NOT decode again here — use params['file'] directly.
  */
 export async function handleMarkAsRead(app: App, params: Record<string, string>): Promise<void> {
-    const basename    = params['file']     ?? '';
+    const fileParam   = params['file']     ?? '';
     const propertyKey = params['property'] ?? 'Read';
 
-    if (!basename) {
-        new Notice('RSS: Mark as Read — missing file name.');
+    if (!fileParam) {
+        new Notice('RSS: Mark as Read — missing file path.');
         return;
     }
 
-    const file = app.vault.getMarkdownFiles().find(f => f.basename === basename);
+    const normalizedPath = normalizePath(fileParam);
+    let file = app.vault.getAbstractFileByPath(normalizedPath);
 
-    if (!file) {
-        new Notice(`RSS: Mark as Read — file not found: "${basename}"`);
+    // Backward compatibility for links created before path-based Mark as Read.
+    if (!(file instanceof TFile)) {
+        file = app.vault.getMarkdownFiles().find(f => f.basename === fileParam) ?? null;
+    }
+
+    if (!(file instanceof TFile)) {
+        new Notice(`RSS: Mark as Read — file not found: "${fileParam}"`);
         return;
     }
 

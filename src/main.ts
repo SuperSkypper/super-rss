@@ -1,15 +1,13 @@
 import { Plugin, Notice, normalizePath } from 'obsidian';
-import { RssSettingTab } from './settings';
-import { AddUrlModal } from './settings/feedAdd';
-import { addFeed } from './settings/feedAdd';
-import { updateFeed, updateAllFeeds } from './settings/feedUpdate';
-import { handleMarkAsRead, MARK_AS_READ_PROTOCOL } from './settings/feedMarkAsRead';
-import { loadAutoDatabase, saveAutoDatabase, migrateAndPurgeDatabase } from './settings/feedDatabase';
 
 // ─── Types & defaults (extracted to keep main.ts lean) ───────────────────────
-import { FeedConfig, PluginSettings, DEFAULT_SETTINGS } from './settings/settingsDefault';
-export type { FeedItem, FeedConfig, FeedGroup, ImageLocation, PluginSettings } from './settings/settingsDefault';
+import { DEFAULT_SETTINGS } from './settings/settingsDefault';
+import type { FeedConfig, PluginSettings } from './settings/settingsDefault';
+import { migrateLegacyFrontmatterTemplate } from './settings/frontmatterMigration';
+export type { FeedItem, FeedConfig, FeedGroup, FrontmatterMode, FrontmatterPropertyTemplate, FrontmatterPropertyType, ImageLocation, DeleteBehavior, PluginSettings } from './settings/settingsDefault';
 export { DEFAULT_SETTINGS } from './settings/settingsDefault';
+
+const MARK_AS_READ_PROTOCOL = 'rss-mark-as-read';
 
 // --- 2. HELPERS ---
 
@@ -38,8 +36,10 @@ export function resolveFeedPath(feed: FeedConfig, settings: PluginSettings): str
 export default class RssPlugin extends Plugin {
     settings!: PluginSettings;
     isUpdating: boolean = false;
+    stopRequested: boolean = false;
     private intervalIds: number[] = [];
     private statusBarItem: HTMLElement | null = null;
+    private currentUpdatePromise: Promise<void> | null = null;
 
     // Keep references so we can show/hide ribbon icons after saveSettings
     private ribbonUpdateEl: HTMLElement | null = null;
@@ -47,9 +47,6 @@ export default class RssPlugin extends Plugin {
 
     async onload() {
         await this.loadSettings();
-        await migrateAndPurgeDatabase(this.app);
-
-        this.addSettingTab(new RssSettingTab(this.app, this));
 
         this.statusBarItem = this.addStatusBarItem();
         this.statusBarItem.style.display = 'none';
@@ -57,39 +54,40 @@ export default class RssPlugin extends Plugin {
         this.addCommand({
             id: 'update-rss-feeds',
             name: 'Update RSS feeds',
-            callback: () => updateAllFeeds(this.app, this),
+            callback: () => {
+                void this.updateAllFeeds();
+            },
         });
 
         this.addCommand({
             id: 'add-rss-feed',
             name: 'Add RSS feed',
             callback: () => {
-                new AddUrlModal(this.app, async (url: string) => {
-                    await addFeed(this.app, this, url);
-                }).open();
+                void this.openAddFeedModal();
             },
         });
 
         // ── Ribbon: update all feeds ──────────────────────────────────────────
         this.ribbonUpdateEl = this.addRibbonIcon('rss', 'Update RSS feeds', () => {
-            updateAllFeeds(this.app, this);
+            void this.updateAllFeeds();
         });
         this.ribbonUpdateEl.style.display = this.settings.ribbonUpdate ? '' : 'none';
 
         // ── Ribbon: add a new feed ────────────────────────────────────────────
         this.ribbonAddEl = this.addRibbonIcon('circle-plus', 'Add RSS feed', () => {
-            new AddUrlModal(this.app, async (url: string) => {
-                await addFeed(this.app, this, url);
-            }).open();
+            void this.openAddFeedModal();
         });
         this.ribbonAddEl.style.display = this.settings.ribbonAdd ? '' : 'none';
 
         // ── Mark as Read URI handler ──────────────────────────────────────────
-        this.registerObsidianProtocolHandler(MARK_AS_READ_PROTOCOL, (params) =>
-            handleMarkAsRead(this.app, params)
-        );
+        this.registerObsidianProtocolHandler(MARK_AS_READ_PROTOCOL, (params) => {
+            void this.handleMarkAsRead(params);
+        });
 
         this.setupAutoUpdate();
+        this.app.workspace.onLayoutReady(() => {
+            void this.loadDeferredStartup();
+        });
 
 
     }
@@ -175,7 +173,9 @@ export default class RssPlugin extends Plugin {
 
         const intervalMs = this.getIntervalMs();
         if (intervalMs >= 60000) {
-            const id = window.setInterval(() => updateAllFeeds(this.app, this), intervalMs);
+            const id = window.setInterval(() => {
+                void this.updateAllFeeds();
+            }, intervalMs);
             this.intervalIds.push(id);
         }
     }
@@ -189,21 +189,75 @@ export default class RssPlugin extends Plugin {
 
     // ── Public update delegates ───────────────────────────────────────────────
 
-    async stopUpdate(): Promise<void> {
-        if (!this.isUpdating) return;
-        this.isUpdating = false;
-        this.clearStatusBar();
+    private async loadDeferredStartup(): Promise<void> {
+        try {
+            const [{ RssSettingTab }, { migrateAndPurgeDatabase }] = await Promise.all([
+                import('./settings'),
+                import('./settings/feedDatabase'),
+            ]);
 
-        // Release the lock immediately so the next update is not blocked.
-        // updateAllFeeds also calls releaseLock in its finally block, but
-        // it may not run soon enough if the loop is between long async steps.
-        const { releaseLock } = await import('./settings/feedUpdate');
-        await releaseLock(this.app);
+            this.addSettingTab(new RssSettingTab(this.app, this));
+            await migrateAndPurgeDatabase(this.app);
+        } catch (e) {
+            console.error('RSS: Failed to finish deferred startup work', e);
+        }
+    }
+
+    private async openAddFeedModal(): Promise<void> {
+        const { AddUrlModal, addFeed } = await import('./settings/feedAdd');
+        new AddUrlModal(this.app, async (url: string) => {
+            await addFeed(this.app, this, url);
+        }).open();
+    }
+
+    private async handleMarkAsRead(params: Record<string, string>): Promise<void> {
+        try {
+            const { handleMarkAsRead } = await import('./settings/feedMarkAsRead');
+            await handleMarkAsRead(this.app, params);
+        } catch (e) {
+            console.error('RSS: Failed to mark item as read', e);
+            new Notice('RSS: Failed to mark item as read.', 4000);
+        }
+    }
+
+    async stopUpdate(): Promise<void> {
+        if (!this.currentUpdatePromise) return;
+        this.stopRequested = true;
+        this.isUpdating = false;
+        this.setStatusBarText('Stopping RSS update...', 'Waiting for the current network or file operation to finish.');
+
+        try {
+            await this.currentUpdatePromise;
+        } finally {
+            this.clearStatusBar();
+        }
 
         new Notice('RSS: Update stopped.', 3000);
     }
 
+    private runTrackedUpdate(): Promise<void> {
+        if (this.currentUpdatePromise) return this.currentUpdatePromise;
+
+        this.stopRequested = false;
+        const promise = (async () => {
+            const { updateAllFeeds } = await import('./settings/feedUpdate');
+            await updateAllFeeds(this.app, this);
+        })().finally(() => {
+            if (this.currentUpdatePromise === promise) {
+                this.currentUpdatePromise = null;
+            }
+            this.stopRequested = false;
+        });
+
+        this.currentUpdatePromise = promise;
+        return promise;
+    }
+
     async updateFeed(feed: FeedConfig) {
+        const [{ loadAutoDatabase, saveAutoDatabase }, { updateFeed }] = await Promise.all([
+            import('./settings/feedDatabase'),
+            import('./settings/feedUpdate'),
+        ]);
         const db = await loadAutoDatabase(this.app);
         const result = await updateFeed(this.app, this, feed, db);
         await saveAutoDatabase(this.app, db);
@@ -211,7 +265,7 @@ export default class RssPlugin extends Plugin {
     }
 
     async updateAllFeeds() {
-        return updateAllFeeds(this.app, this);
+        return this.runTrackedUpdate();
     }
 
     // ── Settings ──────────────────────────────────────────────────────────────
@@ -220,6 +274,7 @@ export default class RssPlugin extends Plugin {
         const loadedData = await this.loadData();
         this.settings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
         this.settings.folderPath = sanitizeFolderPath(this.settings.folderPath);
+        const loadedSettings = (loadedData ?? {}) as Partial<PluginSettings>;
 
         if (!this.settings.groups) this.settings.groups = [];
 
@@ -233,6 +288,19 @@ export default class RssPlugin extends Plugin {
         if (this.settings.tagLiveKeywords === undefined) this.settings.tagLiveKeywords = DEFAULT_SETTINGS.tagLiveKeywords;
         if (this.settings.devMode === undefined) this.settings.devMode = false;
         if (this.settings.fileNameTemplate === undefined) this.settings.fileNameTemplate = DEFAULT_SETTINGS.fileNameTemplate;
+        if (this.settings.frontmatterMode !== 'source' && this.settings.frontmatterMode !== 'properties') {
+            this.settings.frontmatterMode = 'properties';
+        }
+        if (Array.isArray(loadedSettings.frontmatterProperties)) {
+            this.settings.frontmatterProperties = loadedSettings.frontmatterProperties.map(p => ({ ...p }));
+        } else if (typeof loadedSettings.frontmatterTemplate === 'string' && loadedSettings.frontmatterTemplate.trim()) {
+            this.settings.frontmatterProperties = migrateLegacyFrontmatterTemplate(loadedSettings.frontmatterTemplate) ?? [];
+            if (this.settings.frontmatterProperties.length === 0) {
+                this.settings.frontmatterMode = 'source';
+            }
+        } else {
+            this.settings.frontmatterProperties = DEFAULT_SETTINGS.frontmatterProperties.map(p => ({ ...p }));
+        }
         if (this.settings.autoCleanupCheckProperty === undefined) this.settings.autoCleanupCheckProperty = false;
         if (this.settings.showProgressNotice === undefined) this.settings.showProgressNotice = true;
         if (this.settings.showStatusBar === undefined) this.settings.showStatusBar = true;
@@ -242,6 +310,7 @@ export default class RssPlugin extends Plugin {
         if (this.settings.markAsReadLinkProperty === undefined) this.settings.markAsReadLinkProperty = DEFAULT_SETTINGS.markAsReadLinkProperty;
         if (this.settings.markAsReadCheckboxProperty === undefined) this.settings.markAsReadCheckboxProperty = DEFAULT_SETTINGS.markAsReadCheckboxProperty;
         if (this.settings.markAsReadDeleteArticles === undefined) this.settings.markAsReadDeleteArticles = false;
+        if (this.settings.deleteBehavior === undefined) this.settings.deleteBehavior = DEFAULT_SETTINGS.deleteBehavior;
     }
 
     async saveSettings() {

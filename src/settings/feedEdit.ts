@@ -2,6 +2,7 @@ import { App, Modal, Setting, Notice, setIcon } from 'obsidian';
 import RssPlugin, { FeedConfig, FeedGroup, resolveFeedPath } from '../main';
 import { renderVariableReference } from './settingsTemplate';
 import { openEditFoldersModal, promptFolderName } from './editFolders';
+import { discardVaultFile } from './feedDelete';
 
 
 // ─── Device detection ─────────────────────────────────────────────────────────
@@ -194,7 +195,8 @@ export class FeedEditModal extends Modal {
         const addFolderIcon = addFolderBtn.createDiv();
         addFolderIcon.style.cssText = 'display: flex; align-items: center; width: 14px; height: 14px;';
         setIcon(addFolderIcon, 'folder-plus');
-        addFolderBtn.addEventListener('click', async () => {
+        addFolderBtn.addEventListener('click', () => {
+            void (async () => {
             const name = await promptFolderName(this.app);
             if (!name) return;
             const newGroup: FeedGroup = { id: `group-${Date.now()}`, name: name.trim() };
@@ -202,6 +204,7 @@ export class FeedEditModal extends Modal {
             await this.plugin.saveSettingsSilent();
             refreshGroupDropdown();
             new Notice(`Folder "${newGroup.name}" created`);
+            })();
         });
         groupSetting.controlEl.insertBefore(addFolderBtn, groupSelectEl);
 
@@ -365,9 +368,11 @@ export class FeedEditModal extends Modal {
             .setDesc('When enabled, automatically deletes articles tagged as "live" in this feed.')
             .addToggle(toggle => toggle
                 .setValue(this.feed.deleteLives ?? false)
-                .onChange(async v => {
+                .onChange(v => {
+                    void (async () => {
                     this.feed.deleteLives = v;
                     if (v) await this.deleteLiveArticles();
+                    })();
                 }));
         this.applyCardToSetting(deleteLivesSetting);
 
@@ -397,7 +402,7 @@ export class FeedEditModal extends Modal {
 
             if (tags.includes('live')) {
                 try {
-                    await vault.delete(file);
+                    await discardVaultFile(this.plugin.app, file, this.plugin.settings);
                     deletedCount++;
                 } catch (e) {
                     console.error(`RSS: Failed to delete live article "${file.path}":`, e);
@@ -570,17 +575,20 @@ export class FeedEditModal extends Modal {
         if (!this._isNew) {
             // Archive: only sets archived flag, does NOT call onDelete
             const archiveBtn = makeIconBtn(leftSide, 'archive', 'Archive');
-            archiveBtn.onclick = async () => {
+            archiveBtn.onclick = () => {
+                void (async () => {
                 this.feed.archived = true;
                 this.feed.enabled  = false;
                 await this.onSave();
                 this._saved = true;
                 this.close();
+                })();
             };
 
             // Move to Trash: sets deleted flag + moves articles, does NOT call onDelete
             const trashBtn = makeIconBtn(leftSide, 'trash', 'Move to Trash', 'mod-warning');
-            trashBtn.onclick = async () => {
+            trashBtn.onclick = () => {
+                void (async () => {
                 this.feed.deleted   = true;
                 this.feed.deletedAt = Date.now();
                 this.feed.enabled   = false;
@@ -588,6 +596,7 @@ export class FeedEditModal extends Modal {
                 await this.onSave();
                 this._saved = true;
                 this.close();
+                })();
             };
         }
 
@@ -598,7 +607,8 @@ export class FeedEditModal extends Modal {
         cancelBtn.onclick = () => this.close();
 
         const saveBtn = rightSide.createEl('button', { text: this._isNew ? 'Import Feed' : 'Save Feed', cls: 'mod-cta' });
-        saveBtn.onclick = async () => {
+        saveBtn.onclick = () => {
+            void (async () => {
             const overlay = this.modalEl.createDiv();
             overlay.style.cssText = `
                 position: absolute; inset: 0;
@@ -641,6 +651,7 @@ export class FeedEditModal extends Modal {
             }
 
             this.close();
+            })();
         };
     }
 
@@ -676,7 +687,12 @@ export class ConfirmDeleteModal extends Modal {
         cancelBtn.onclick = () => this.close();
 
         const deleteBtn = footer.createEl('button', { text: 'Delete Feed', cls: 'mod-warning' });
-        deleteBtn.onclick = async () => { await this.onConfirm(); this.close(); };
+        deleteBtn.onclick = () => {
+            void (async () => {
+                await this.onConfirm();
+                this.close();
+            })();
+        };
     }
 
     onClose() { this.contentEl.empty(); }

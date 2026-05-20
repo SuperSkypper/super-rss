@@ -283,11 +283,13 @@ function showImportModal(
             cancelBtn.onclick = () => this.close();
 
             const importBtn = footer.createEl('button', { text: 'Import Selected', cls: 'mod-cta' });
-            importBtn.onclick = async () => {
-                const { imported, skipped } = await importFeeds(plugin, this.feeds);
-                new Notice(`Imported ${imported} feed(s). Skipped ${skipped} duplicate(s).`);
-                onDone();
-                this.close();
+            importBtn.onclick = () => {
+                void (async () => {
+                    const { imported, skipped } = await importFeeds(plugin, this.feeds);
+                    new Notice(`Imported ${imported} feed(s). Skipped ${skipped} duplicate(s).`);
+                    onDone();
+                    this.close();
+                })();
             };
         }
 

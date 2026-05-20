@@ -390,7 +390,8 @@ export function openBulkEditModal(
             cancelBtn.onclick = () => this.close();
 
             const applyBtn = footer.createEl('button', { text: 'Apply to selected feeds', cls: 'mod-cta' });
-            applyBtn.onclick = async () => {
+            applyBtn.onclick = () => {
+                void (async () => {
                 const a = this.apply;
                 const v = this.values;
 
@@ -440,6 +441,7 @@ export function openBulkEditModal(
                 } else {
                     new Notice('No fields were selected to apply.');
                 }
+                })();
             };
         }
 

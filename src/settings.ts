@@ -167,12 +167,14 @@ export class RssSettingTab extends PluginSettingTab {
         const updateIcon = updateBtn.createDiv();
         updateIcon.style.cssText = 'display: flex; align-items: center; width: 16px; height: 16px;';
         setIcon(updateIcon, 'refresh-cw');
-        updateBtn.onclick = async () => {
+        updateBtn.onclick = () => {
+            void (async () => {
             const activeFeeds = this.plugin.settings.feeds.filter(
                 f => f.enabled && !(f.archived ?? false) && !(f.deleted ?? false)
             );
             if (activeFeeds.length === 0) { new Notice('No active feeds to update'); return; }
             await this.plugin.updateAllFeeds();
+            })();
         };
 
         // ── Stop button ───────────────────────────────────────────────────────
@@ -192,7 +194,7 @@ export class RssSettingTab extends PluginSettingTab {
         setIcon(stopIcon, 'square');
         stopBtn.addEventListener('mouseenter', () => { stopBtn.style.color = 'var(--color-red)'; stopBtn.style.borderColor = 'var(--color-red)'; });
         stopBtn.addEventListener('mouseleave', () => { stopBtn.style.color = 'var(--text-muted)'; stopBtn.style.borderColor = 'var(--background-modifier-border)'; });
-        stopBtn.onclick = async () => { await this.plugin.stopUpdate(); };
+        stopBtn.onclick = () => { void this.plugin.stopUpdate(); };
 
         // ── Cleanup button ────────────────────────────────────────────────────
         const cleanupBtn = tabHeader.createEl('button');
@@ -211,9 +213,11 @@ export class RssSettingTab extends PluginSettingTab {
         setIcon(cleanupIcon, 'trash');
         cleanupBtn.addEventListener('mouseenter', () => { cleanupBtn.style.color = 'var(--color-red)'; cleanupBtn.style.borderColor = 'var(--color-red)'; });
         cleanupBtn.addEventListener('mouseleave', () => { cleanupBtn.style.color = 'var(--text-muted)'; cleanupBtn.style.borderColor = 'var(--background-modifier-border)'; });
-        cleanupBtn.onclick = async () => {
+        cleanupBtn.onclick = () => {
+            void (async () => {
             new Notice('Running cleanup...', 3000);
             await this.runCleanupAndDedup();
+            })();
         };
 
         // ── Separator ─────────────────────────────────────────────────────────
@@ -276,12 +280,14 @@ export class RssSettingTab extends PluginSettingTab {
             const reloadIcon = reloadBtn.createDiv();
             reloadIcon.style.cssText = 'display: flex; align-items: center; width: 16px; height: 16px;';
             setIcon(reloadIcon, 'rotate-ccw');
-            reloadBtn.onclick = async () => {
+            reloadBtn.onclick = () => {
+                void (async () => {
                 await this.plugin.saveSettings();
                 const pluginId = this.plugin.manifest.id;
                 await (this.app as any).plugins.disablePlugin(pluginId);
                 await (this.app as any).plugins.enablePlugin(pluginId);
                 await (this.app as any).setting.openTabById(pluginId);
+                })();
             };
 
             // ── Tag Duplicates button (dev mode only) ─────────────────────────
@@ -301,7 +307,8 @@ export class RssSettingTab extends PluginSettingTab {
             setIcon(tagDupIcon, 'copy');
             tagDupBtn.addEventListener('mouseenter', () => { tagDupBtn.style.color = 'var(--interactive-accent)'; tagDupBtn.style.borderColor = 'var(--interactive-accent)'; });
             tagDupBtn.addEventListener('mouseleave', () => { tagDupBtn.style.color = 'var(--text-muted)'; tagDupBtn.style.borderColor = 'var(--background-modifier-border)'; });
-            tagDupBtn.onclick = async () => {
+            tagDupBtn.onclick = () => {
+                void (async () => {
                 tagDupBtn.disabled = true;
                 try {
                     const count = await tagDuplicatesInVault(this.app, this.plugin);
@@ -309,6 +316,7 @@ export class RssSettingTab extends PluginSettingTab {
                 } finally {
                     tagDupBtn.disabled = false;
                 }
+                })();
             };
         }
 

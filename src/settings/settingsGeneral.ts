@@ -5,6 +5,7 @@ import { purgeEntriesByStatus, ArticleStatus } from './feedDatabase';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ImageLocation = 'obsidian' | 'vault' | 'current' | 'subfolder' | 'specified';
+type DeleteBehavior = 'obsidian' | 'direct' | 'obsidian-trash' | 'system-trash';
 type IntervalUnit = 'minutes' | 'hours' | 'days' | 'months';
 type CleanupDateField = 'datesaved' | 'datepub';
 
@@ -35,12 +36,23 @@ function parsePositiveInt(v: string, fallback: number): number {
     return Math.floor(n);
 }
 
-function debounce<T extends (...args: any[]) => void>(fn: T, ms: number): T {
+function debounce<T extends (...args: any[]) => void | Promise<void>>(
+    fn: T,
+    ms: number
+): (...args: Parameters<T>) => void {
     let timer: ReturnType<typeof setTimeout>;
     return ((...args: any[]) => {
         clearTimeout(timer);
-        timer = setTimeout(() => fn(...args), ms);
-    }) as T;
+        timer = setTimeout(() => {
+            void fn(...args);
+        }, ms);
+    }) as (...args: Parameters<T>) => void;
+}
+
+function saveSettings(plugin: RssPlugin): void {
+    void plugin.saveSettings().catch(e => {
+        console.error('[RSS Plugin] saveSettings failed:', e);
+    });
 }
 
 function applyIndent(settingEl: HTMLElement, level: 1 | 2 = 1): void {
@@ -109,7 +121,7 @@ export function renderGeneralTab(
                 .setValue(plugin.settings.folderPath ?? 'RSS')
                 .onChange(debounce(async (value: string) => {
                     plugin.settings.folderPath = sanitizeFolderPath(value, 'RSS');
-                    try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                    saveSettings(plugin);
                 }, 500));
             text.inputEl.style.fontSize = '16px';
             text.inputEl.autocapitalize = 'off';
@@ -127,9 +139,9 @@ export function renderGeneralTab(
         .setDesc('Automatically fetch articles from feeds in the background.')
         .addToggle(toggle => toggle
             .setValue(isEnabled)
-            .onChange(async (v) => {
+            .onChange((v) => {
                 plugin.settings.pluginEnabled = v;
-                try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                saveSettings(plugin);
                 rerender();
             }));
     applyCardStyle(autoUpdateSetting);
@@ -143,7 +155,7 @@ export function renderGeneralTab(
                     .setValue(displayValue(plugin.settings.updateIntervalValue, 30))
                     .onChange(debounce(async (v: string) => {
                         plugin.settings.updateIntervalValue = parsePositiveInt(v, 30);
-                        try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                        saveSettings(plugin);
                     }, 500));
                 text.inputEl.style.fontSize = '16px';
                 text.inputEl.inputMode = 'numeric';
@@ -155,9 +167,9 @@ export function renderGeneralTab(
                 .addOption('minutes', 'Minutes').addOption('hours', 'Hours')
                 .addOption('days', 'Days').addOption('months', 'Months')
                 .setValue(plugin.settings.updateIntervalUnit ?? 'minutes')
-                .onChange(async (v: string) => {
+                .onChange((v: string) => {
                     plugin.settings.updateIntervalUnit = v as IntervalUnit;
-                    try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                    saveSettings(plugin);
                 }));
         applyCardStyle(intervalSetting);
         applyIndent(intervalSetting.settingEl);
@@ -174,9 +186,9 @@ export function renderGeneralTab(
         .setDesc('Automatically delete old vault articles.')
         .addToggle(toggle => toggle
             .setValue(autoDeleteEnabled)
-            .onChange(async (v) => {
+            .onChange((v) => {
                 plugin.settings.autoCleanupValue = v ? 30 : 0;
-                try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                saveSettings(plugin);
                 rerender();
             }));
     applyCardStyle(autoDeleteToggle);
@@ -190,7 +202,7 @@ export function renderGeneralTab(
                     .setValue(displayValue(plugin.settings.autoCleanupValue, 30))
                     .onChange(debounce(async (v: string) => {
                         plugin.settings.autoCleanupValue = parsePositiveInt(v, 30);
-                        try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                        saveSettings(plugin);
                     }, 500));
                 text.inputEl.style.fontSize = '16px';
                 text.inputEl.inputMode = 'numeric';
@@ -202,9 +214,9 @@ export function renderGeneralTab(
                 .addOption('minutes', 'Minutes').addOption('hours', 'Hours')
                 .addOption('days', 'Days').addOption('months', 'Months')
                 .setValue(plugin.settings.autoCleanupUnit ?? 'days')
-                .onChange(async (v: string) => {
+                .onChange((v: string) => {
                     plugin.settings.autoCleanupUnit = v as IntervalUnit;
-                    try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                    saveSettings(plugin);
                 }));
         applyCardStyle(cleanupSetting);
         applyIndent(cleanupSetting.settingEl);
@@ -216,9 +228,9 @@ export function renderGeneralTab(
                 .addOption('datesaved', 'Date Saved')
                 .addOption('datepub', 'Date Published')
                 .setValue(plugin.settings.autoCleanupDateField ?? 'datesaved')
-                .onChange(async (v: string) => {
+                .onChange((v: string) => {
                     plugin.settings.autoCleanupDateField = v as CleanupDateField;
-                    try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                    saveSettings(plugin);
                 }));
         applyCardStyle(cleanupDateFieldSetting);
         applyIndent(cleanupDateFieldSetting.settingEl);
@@ -228,9 +240,9 @@ export function renderGeneralTab(
             .setDesc('Only delete articles if their checkbox property is true.')
             .addToggle(toggle => toggle
                 .setValue(plugin.settings.autoCleanupCheckProperty ?? false)
-                .onChange(async (v) => {
+                .onChange((v) => {
                     plugin.settings.autoCleanupCheckProperty = v;
-                    try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                    saveSettings(plugin);
                     rerender();
                 }));
         applyCardStyle(protectedCheckToggle);
@@ -246,7 +258,7 @@ export function renderGeneralTab(
                         .setValue(plugin.settings.autoCleanupCheckPropertyName ?? '')
                         .onChange(debounce(async (v: string) => {
                             plugin.settings.autoCleanupCheckPropertyName = v.trim();
-                            try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                            saveSettings(plugin);
                         }, 500));
                     text.inputEl.style.fontSize = '16px';
                     text.inputEl.autocapitalize = 'off';
@@ -267,9 +279,9 @@ export function renderGeneralTab(
         .setDesc('Adds a clickable link frontmatter property that toggles a checkbox when clicked.')
         .addToggle(toggle => toggle
             .setValue(plugin.settings.markAsReadEnabled ?? true)
-            .onChange(async (v) => {
+            .onChange((v) => {
                 plugin.settings.markAsReadEnabled = v;
-                try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                saveSettings(plugin);
                 rerender();
             }));
     applyCardStyle(markAsReadToggle);
@@ -282,9 +294,9 @@ export function renderGeneralTab(
             .addText(text => {
                 text.setPlaceholder('Mark as Read')
                     .setValue(plugin.settings.markAsReadLinkProperty ?? 'Mark as Read')
-                    .onChange(async (val) => {
+                    .onChange((val) => {
                         plugin.settings.markAsReadLinkProperty = val;
-                        await plugin.saveSettings();
+                        saveSettings(plugin);
                     });
             });
         applyCardStyle(markAsReadLinkPropSetting);
@@ -296,9 +308,9 @@ export function renderGeneralTab(
             .addText(text => {
                 text.setPlaceholder('Read')
                     .setValue(plugin.settings.markAsReadCheckboxProperty ?? 'Read')
-                    .onChange(async (val) => {
+                    .onChange((val) => {
                         plugin.settings.markAsReadCheckboxProperty = val;
-                        await plugin.saveSettings();
+                        saveSettings(plugin);
                     });
             });
         applyCardStyle(markAsReadCheckboxPropSetting);
@@ -309,9 +321,9 @@ export function renderGeneralTab(
             .setDesc('Automatically delete articles when their checkbox is ticked. (Requires Auto-Update).')
             .addToggle(toggle => toggle
                 .setValue(plugin.settings.markAsReadDeleteArticles ?? false)
-                .onChange(async (v) => {
+                .onChange((v) => {
                     plugin.settings.markAsReadDeleteArticles = v;
-                    await plugin.saveSettings();
+                    saveSettings(plugin);
                 }));
         applyCardStyle(markAsReadDeleteSetting);
         applyIndent(markAsReadDeleteSetting.settingEl);
@@ -321,7 +333,8 @@ export function renderGeneralTab(
             .setDesc('Copy a formula for Obsidian Bases to create a clickable Mark as Read button in Gallery/Card views.')
             .addButton(btn => {
                 btn.setButtonText('Copy Formula')
-                    .onClick(async () => {
+                    .onClick(() => {
+                        void (async () => {
                         const checkboxProp = plugin.settings.markAsReadCheckboxProperty?.trim() || 'Read';
                         // Synchronize with buildMarkAsReadLink encoding logic
                         const formula =
@@ -335,11 +348,16 @@ export function renderGeneralTab(
                         try {
                             await navigator.clipboard.writeText(formula);
                             btn.setButtonText('Copied!');
-                            setTimeout(() => btn.setButtonText('Copy formula'), 2000);
+                            setTimeout(() => {
+                                btn.setButtonText('Copy formula');
+                            }, 2000);
                         } catch {
                             btn.setButtonText('Failed');
-                            setTimeout(() => btn.setButtonText('Copy formula'), 2000);
+                            setTimeout(() => {
+                                btn.setButtonText('Copy formula');
+                            }, 2000);
                         }
+                        })();
                     });
             });
         applyCardStyle(copyFormulaSetting);
@@ -350,14 +368,29 @@ export function renderGeneralTab(
 
     contentEl.createEl('h3', { text: 'Storage' });
 
+    const deleteBehaviorSetting = new Setting(contentEl)
+        .setName('Delete behavior')
+        .setDesc('Choose how cleanup and duplicate removal discard article notes.')
+        .addDropdown(dropdown => dropdown
+            .addOption('obsidian', 'Use Obsidian setting')
+            .addOption('obsidian-trash', 'Move to Obsidian trash')
+            .addOption('system-trash', 'Move to system trash')
+            .addOption('direct', 'Delete permanently')
+            .setValue(plugin.settings.deleteBehavior ?? 'obsidian')
+            .onChange((value: string) => {
+                plugin.settings.deleteBehavior = value as DeleteBehavior;
+                saveSettings(plugin);
+            }));
+    applyCardStyle(deleteBehaviorSetting);
+
     const downloadImgSetting = new Setting(contentEl)
         .setName('Download Images')
         .setDesc('Save article images locally to your vault.')
         .addToggle(toggle => toggle
             .setValue(plugin.settings.downloadImages ?? false)
-            .onChange(async (value) => {
+            .onChange((value) => {
                 plugin.settings.downloadImages = value;
-                try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                saveSettings(plugin);
                 rerender();
             }));
     applyCardStyle(downloadImgSetting);
@@ -373,9 +406,9 @@ export function renderGeneralTab(
                 .addOption('subfolder', 'In subfolder under RSS folder')
                 .addOption('specified', 'In the folder specified below')
                 .setValue(plugin.settings.imageLocation || 'obsidian')
-                .onChange(async (value: string) => {
+                .onChange((value: string) => {
                     plugin.settings.imageLocation = value as ImageLocation;
-                    try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                    saveSettings(plugin);
                     rerender();
                 }));
         applyCardStyle(locationSetting);
@@ -399,7 +432,7 @@ export function renderGeneralTab(
                         .setValue(plugin.settings.imagesFolder ?? 'attachments')
                         .onChange(debounce(async (v: string) => {
                             plugin.settings.imagesFolder = sanitizeFolderPath(v, 'attachments');
-                            try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                            saveSettings(plugin);
                         }, 500));
                     text.inputEl.style.fontSize = '16px';
                     text.inputEl.autocapitalize = 'off';
@@ -414,9 +447,9 @@ export function renderGeneralTab(
                 .setDesc('If enabled, subfolder is created inside each feed folder.')
                 .addToggle(toggle => toggle
                     .setValue(plugin.settings.useFeedFolder ?? true)
-                    .onChange(async (v) => {
+                    .onChange((v) => {
                         plugin.settings.useFeedFolder = v;
-                        try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                        saveSettings(plugin);
                     }));
             applyCardStyle(feedBaseSetting);
             applyIndent(feedBaseSetting.settingEl, 2);
@@ -431,7 +464,7 @@ export function renderGeneralTab(
                         .setValue(plugin.settings.imagesFolder ?? '')
                         .onChange(debounce(async (v: string) => {
                             plugin.settings.imagesFolder = sanitizeFolderPath(v, '');
-                            try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                            saveSettings(plugin);
                         }, 500));
                     text.inputEl.style.fontSize = '16px';
                     text.inputEl.autocapitalize = 'off';
@@ -452,9 +485,9 @@ export function renderGeneralTab(
         .setDesc('Display the update button in the left sidebar ribbon.')
         .addToggle(toggle => toggle
             .setValue(plugin.settings.ribbonUpdate ?? true)
-            .onChange(async (v) => {
+            .onChange((v) => {
                 plugin.settings.ribbonUpdate = v;
-                try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                saveSettings(plugin);
             }));
     applyCardStyle(ribbonUpdateSetting);
 
@@ -463,9 +496,9 @@ export function renderGeneralTab(
         .setDesc('Display the add feed button in the left sidebar ribbon.')
         .addToggle(toggle => toggle
             .setValue(plugin.settings.ribbonAdd ?? true)
-            .onChange(async (v) => {
+            .onChange((v) => {
                 plugin.settings.ribbonAdd = v;
-                try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                saveSettings(plugin);
             }));
     applyCardStyle(ribbonAddSetting);
 
@@ -478,9 +511,9 @@ export function renderGeneralTab(
         .setDesc('Show a notification when updating feeds.')
         .addToggle(toggle => toggle
             .setValue(plugin.settings.showProgressNotice ?? true)
-            .onChange(async (v) => {
+            .onChange((v) => {
                 plugin.settings.showProgressNotice = v;
-                try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                saveSettings(plugin);
             }));
     applyCardStyle(progressNoticeSetting);
 
@@ -489,9 +522,9 @@ export function renderGeneralTab(
         .setDesc('Display progress in the bottom status bar.')
         .addToggle(toggle => toggle
             .setValue(plugin.settings.showStatusBar ?? true)
-            .onChange(async (v) => {
+            .onChange((v) => {
                 plugin.settings.showStatusBar = v;
-                try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                saveSettings(plugin);
             }));
     applyCardStyle(statusBarSetting);
 
@@ -504,9 +537,9 @@ export function renderGeneralTab(
         .setDesc('Automatically tag articles from YouTube Shorts.')
         .addToggle(toggle => toggle
             .setValue(plugin.settings.tagShortsGlobal ?? false)
-            .onChange(async (v) => {
+            .onChange((v) => {
                 plugin.settings.tagShortsGlobal = v;
-                try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                saveSettings(plugin);
             }));
     applyCardStyle(tagShortsSetting);
 
@@ -515,9 +548,9 @@ export function renderGeneralTab(
         .setDesc('Never save articles from YouTube Shorts URLs.')
         .addToggle(toggle => toggle
             .setValue(plugin.settings.skipShortsGlobal ?? false)
-            .onChange(async (v) => {
+            .onChange((v) => {
                 plugin.settings.skipShortsGlobal = v;
-                try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                saveSettings(plugin);
             }));
     applyCardStyle(skipShortsSetting);
 
@@ -526,9 +559,9 @@ export function renderGeneralTab(
         .setDesc('Tag articles matching live stream keywords in the title.')
         .addToggle(toggle => toggle
             .setValue(plugin.settings.tagLiveGlobal ?? false)
-            .onChange(async (v) => {
+            .onChange((v) => {
                 plugin.settings.tagLiveGlobal = v;
-                try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                saveSettings(plugin);
                 rerender();
             }));
     applyCardStyle(tagLiveToggle);
@@ -542,7 +575,7 @@ export function renderGeneralTab(
                     .setValue(plugin.settings.tagLiveKeywords ?? '')
                     .onChange(debounce(async (v: string) => {
                         plugin.settings.tagLiveKeywords = v.trim();
-                        try { await plugin.saveSettings(); } catch (e) { console.error('[RSS Plugin] saveSettings failed:', e); }
+                        saveSettings(plugin);
                     }, 500));
                 t.inputEl.style.fontSize = '16px';
                 t.inputEl.autocapitalize = 'off';
@@ -563,10 +596,10 @@ export function renderGeneralTab(
         .setDesc('Enables extra controls for debugging.')
         .addToggle(toggle => toggle
             .setValue(plugin.settings.devMode ?? false)
-            .onChange(async (v) => {
+            .onChange((v) => {
                 plugin.settings.devMode = v;
                 try {
-                    await plugin.saveSettings();
+                    saveSettings(plugin);
                 } catch (e) {
                     console.error('[RSS Plugin] Failed to save devMode setting:', e);
                     return;

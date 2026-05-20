@@ -263,7 +263,7 @@ export function renderMyFeedsTab(
         plugin.settings.feeds = plugin.settings.feeds.filter(
             (f: FeedConfig) => !(f.deleted && f.deletedAt && (now - f.deletedAt > FIFTEEN))
         );
-        if (plugin.settings.feeds.length !== before) plugin.saveSettings();
+        if (plugin.settings.feeds.length !== before) void plugin.saveSettings();
     }
 
     // ── Virtual list ──────────────────────────────────────────────────────────
@@ -372,7 +372,8 @@ export function renderMyFeedsTab(
                 restoreRo.observe(controlsCard);
                 const restoreRoCleanup = new MutationObserver(() => { restoreRo.disconnect(); restoreRoCleanup.disconnect(); });
                 restoreRoCleanup.observe(controlsCard, { childList: true });
-                restoreBtn.addEventListener('click', async () => {
+                restoreBtn.addEventListener('click', () => {
+                    void (async () => {
                     const count = selectedFeeds.size;
                     plugin.settings.feeds.forEach((f: FeedConfig) => {
                         if (!selectedFeeds.has(f.url)) return;
@@ -383,6 +384,7 @@ export function renderMyFeedsTab(
                     await plugin.saveSettings();
                     fullRefresh();
                     new Notice(`Restored ${count} feed${count !== 1 ? 's' : ''}`);
+                    })();
                 });
 
                 const sep3 = controlsCard.createDiv();
@@ -405,7 +407,8 @@ export function renderMyFeedsTab(
                 const delRoCleanup = new MutationObserver(() => { delRo.disconnect(); delRoCleanup.disconnect(); });
                 delRoCleanup.observe(controlsCard, { childList: true });
 
-                delBtn.addEventListener('click', async () => {
+                delBtn.addEventListener('click', () => {
+                    void (async () => {
                     const count = selectedFeeds.size;
                     const ConfirmDeleteModal = await getConfirmDeleteModal();
                     new ConfirmDeleteModal(app,
@@ -417,6 +420,7 @@ export function renderMyFeedsTab(
                             new Notice(`Permanently deleted ${count} feed${count !== 1 ? 's' : ''}`);
                         },
                     ).open();
+                    })();
                 });
 
             } else {
@@ -464,7 +468,8 @@ export function renderMyFeedsTab(
             const allOn   = selList.every((f: FeedConfig) => f.enabled);
             if (allOn) toggleEl.classList.add('is-enabled');
             toggleEl.title = allOn ? 'Disable selected' : 'Enable selected';
-            toggleEl.addEventListener('click', async () => {
+            toggleEl.addEventListener('click', () => {
+                void (async () => {
                 const enabling = !toggleEl.classList.contains('is-enabled');
                 selList.forEach((f: FeedConfig) => {
                     f.enabled = enabling;
@@ -475,6 +480,7 @@ export function renderMyFeedsTab(
                 });
                 await plugin.saveSettings();
                 fullRefresh();
+                })();
             });
         }
 
@@ -723,7 +729,8 @@ function renderFeedCard(
     const toggleEl = toggleWrapper.createEl('div', { cls: 'checkbox-container' });
     toggleEl.style.margin = '0';
     if (feed.enabled) toggleEl.classList.add('is-enabled');
-    toggleEl.addEventListener('click', async () => {
+    toggleEl.addEventListener('click', () => {
+        void (async () => {
         feed.enabled = !feed.enabled;
         toggleEl.classList.toggle('is-enabled', feed.enabled);
         if (feed.enabled) {
@@ -735,6 +742,7 @@ function renderFeedCard(
         }
         await plugin.saveSettings();
         onSelectionChange();
+        })();
     });
 
     const separator = cardEl.createDiv();
@@ -850,7 +858,8 @@ function renderFeedCard(
                 item.style.cssText = `padding: 6px 10px; border-radius: 5px; cursor: pointer; font-size: 0.85em; color: ${isCur ? 'var(--text-normal)' : 'var(--text-muted)'}; font-weight: ${isCur ? '500' : '400'};`;
                 item.onmouseenter = () => { item.style.background = 'var(--background-modifier-hover)'; item.style.color = 'var(--text-normal)'; };
                 item.onmouseleave = () => { item.style.background = 'transparent'; };
-                item.addEventListener('pointerdown', async (ev) => {
+                item.addEventListener('pointerdown', (ev) => {
+                    void (async () => {
                     ev.preventDefault();
                     pop.remove();
                     const hide = showGlobalLoading('Moving feed...');
@@ -859,6 +868,7 @@ function renderFeedCard(
                         await plugin.saveSettings();
                     } finally { hide(); }
                     badge.setText(groups.find(g => g.id === feed.groupId)?.name ?? '— folder —');
+                    })();
                 });
             };
 
@@ -907,7 +917,8 @@ function renderFeedCard(
     // ── Update button (only for non-deleted feeds) ────────────────────────────
     if (!isDeleted) {
         const updateBtn = addBtn('refresh-cw', 'Update this feed');
-        updateBtn.addEventListener('click', async () => {
+        updateBtn.addEventListener('click', () => {
+            void (async () => {
             if (plugin.isUpdating) {
                 new Notice('An update is already running.');
                 return;
@@ -930,44 +941,54 @@ function renderFeedCard(
                 iconEl.style.transform  = '';
                 updateBtn.disabled = false;
             }
+            })();
         });
     }
 
     // ── Edit button ───────────────────────────────────────────────────────────
     const editBtn = addBtn('pencil', 'Edit feed');
-    editBtn.addEventListener('click', async () => {
+    editBtn.addEventListener('click', () => {
+        void (async () => {
         const liveIndex = plugin.settings.feeds.indexOf(feed);
         if (liveIndex === -1) return;
         const FeedEditModal = await getFeedEditModal();
         new FeedEditModal(app, plugin, feed,
             async () => { await plugin.saveSettings(); onRefresh(); },
-            () => { plugin.settings.feeds.splice(liveIndex, 1); plugin.saveSettings(); onRefresh(); }
+            () => { plugin.settings.feeds.splice(liveIndex, 1); void plugin.saveSettings(); onRefresh(); }
         ).open();
+        })();
     });
 
     if (isDeleted) {
         const btn = addBtn('undo', 'Restore feed');
-        btn.addEventListener('click', async () => {
+        btn.addEventListener('click', () => {
+            void (async () => {
             feed.deleted = false; delete feed.deletedAt;
             await plugin.saveSettings(); onRefresh();
+            })();
         });
     } else if (isArchived) {
         const btn = addBtn('archive-restore', 'Unarchive feed');
-        btn.addEventListener('click', async () => {
+        btn.addEventListener('click', () => {
+            void (async () => {
             feed.archived = false;
             await plugin.saveSettings(); onRefresh();
+            })();
         });
     } else {
         const btn = addBtn('archive', 'Archive feed');
-        btn.addEventListener('click', async () => {
+        btn.addEventListener('click', () => {
+            void (async () => {
             feed.archived = true; feed.enabled = false;
             await plugin.saveSettings(); onRefresh();
+            })();
         });
     }
 
     if (isDeleted) {
         const btn = addBtn('trash', 'Permanently delete', 'var(--color-red)');
-        btn.addEventListener('click', async () => {
+        btn.addEventListener('click', () => {
+            void (async () => {
             const ConfirmDeleteModal = await getConfirmDeleteModal();
             new ConfirmDeleteModal(app,
                 async () => {
@@ -976,12 +997,15 @@ function renderFeedCard(
                     await plugin.saveSettings(); onRefresh();
                 }
             ).open();
+            })();
         });
     } else {
         const btn = addBtn('trash', 'Move to trash');
-        btn.addEventListener('click', async () => {
+        btn.addEventListener('click', () => {
+            void (async () => {
             feed.deleted = true; feed.deletedAt = Date.now(); feed.enabled = false;
             await plugin.saveSettings(); onRefresh();
+            })();
         });
     }
 }

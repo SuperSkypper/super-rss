@@ -164,7 +164,7 @@ export async function updateFeed(
         }
 
         if (feed.deleteLives) {
-            deleted += await deleteLiveArticlesForFeed(app, absoluteFolderPath, db);
+            deleted += await deleteLiveArticlesForFeed(app, absoluteFolderPath, db, plugin.settings);
             if (deleted > 0) await saveAutoDatabase(app, db);
         }
 
@@ -195,6 +195,11 @@ export async function updateAllFeeds(
         return;
     }
 
+    if (plugin.stopRequested) {
+        await releaseLock(app);
+        return;
+    }
+
     plugin.isUpdating = true;
 
     try {
@@ -211,7 +216,7 @@ export async function updateAllFeeds(
         const db = await loadAutoDatabase(app);
 
         for (let i = 0; i < total; i++) {
-            if (!plugin.isUpdating) break;
+            if (!plugin.isUpdating || plugin.stopRequested) break;
             const feed = enabledFeeds[i];
             if (!feed) continue;
 
@@ -221,14 +226,14 @@ export async function updateAllFeeds(
             totalDeleted += deleted;
         }
 
-        if (plugin.isUpdating) {
+        if (plugin.isUpdating && !plugin.stopRequested) {
             const rssFolderPath = normalizePath(plugin.settings.folderPath);
             const allMdFiles = app.vault.getMarkdownFiles().filter(f => f.path.startsWith(rssFolderPath + '/'));
             const totalFiles = allMdFiles.length;
             const fileCache: FileMeta[] = [];
 
             for (let i = 0; i < totalFiles; i++) {
-                if (!plugin.isUpdating) break;
+                if (!plugin.isUpdating || plugin.stopRequested) break;
                 const f = allMdFiles[i]!;
                 plugin.setStatusBarText(`⏳ Saving: ${i + 1}/${totalFiles}`, `Processing ${f.path}`);
                 
@@ -237,7 +242,7 @@ export async function updateAllFeeds(
                 fileCache.push({ file: f, link, pubDate, deleted: false });
             }
 
-            if (plugin.isUpdating) {
+            if (plugin.isUpdating && !plugin.stopRequested) {
                 try {
                     totalDeleted += await runAutoCleanup(app, plugin, db, fileCache);
                 } catch (e) {
@@ -245,7 +250,7 @@ export async function updateAllFeeds(
                 }
                 try {
                     plugin.setStatusBarText('⏳ Checking Duplicates...');
-                    await tagDuplicatesInVault(app, plugin, fileCache);
+                    totalDeleted += await tagDuplicatesInVault(app, plugin, fileCache);
                 } catch (e) {
                     console.error('RSS: duplicate tagging failed:', e);
                 }

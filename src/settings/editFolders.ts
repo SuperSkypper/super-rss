@@ -138,7 +138,8 @@ export function openMoveToFolderModal(
 
             const noneBtn = list.createEl('button', { text: '— No folder —' });
             noneBtn.style.cssText = 'text-align: left; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--background-modifier-border); background: transparent; cursor: pointer; color: var(--text-muted);';
-            noneBtn.onclick = async () => {
+            noneBtn.onclick = () => {
+                void (async () => {
                 const hide = showGlobalLoading('Moving feeds...');
                 try {
                     for (const f of plugin.settings.feeds) {
@@ -148,12 +149,14 @@ export function openMoveToFolderModal(
                 } finally { hide(); }
                 this.close();
                 onDone();
+                })();
             };
 
             for (const group of groups) {
                 const btn = list.createEl('button', { text: group.name });
                 btn.style.cssText = 'text-align: left; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--background-modifier-border); background: transparent; cursor: pointer; color: var(--text-normal);';
-                btn.onclick = async () => {
+                btn.onclick = () => {
+                    void (async () => {
                     const hide = showGlobalLoading('Moving feeds...');
                     try {
                         for (const f of plugin.settings.feeds) {
@@ -164,6 +167,7 @@ export function openMoveToFolderModal(
                     this.close();
                     onDone();
                     new Notice(`Moved ${selectedFeeds.size} feed${selectedFeeds.size !== 1 ? 's' : ''} to "${group.name}"`);
+                    })();
                 };
             }
 
@@ -229,7 +233,8 @@ export function openEditFoldersModal(
             addIconEl.style.cssText = 'display: flex; align-items: center; width: 14px; height: 14px;';
             setIcon(addIconEl, 'folder-plus');
             addBtn.createSpan({ text: 'New Folder' });
-            addBtn.addEventListener('click', async () => {
+            addBtn.addEventListener('click', () => {
+                void (async () => {
                 const name = await promptFolderName(app);
                 if (!name) return;
                 const newGroup: FeedGroup = { id: `group-${Date.now()}`, name: name.trim() };
@@ -238,6 +243,7 @@ export function openEditFoldersModal(
                 onDone();
                 this.appendRow(newGroup);
                 new Notice(`Folder "${newGroup.name}" created`);
+                })();
             });
 
             // ── Scrollable folder list ────────────────────────────────────────
@@ -316,7 +322,8 @@ export function openEditFoldersModal(
             const renameIconEl = renameBtn.createDiv();
             renameIconEl.style.cssText = 'display: flex; align-items: center; width: 14px; height: 14px;';
             setIcon(renameIconEl, 'pencil');
-            renameBtn.addEventListener('click', async () => {
+            renameBtn.addEventListener('click', () => {
+                void (async () => {
                 const newName = await promptFolderName(app, group.name);
                 if (!newName || newName === group.name) return;
 
@@ -325,6 +332,7 @@ export function openEditFoldersModal(
                 onDone();
                 nameEl.setText(group.name);
                 new Notice(`Renamed to "${group.name}"`);
+                })();
             });
 
             // ── Delete ────────────────────────────────────────────────────────
@@ -336,7 +344,8 @@ export function openEditFoldersModal(
             const deleteIconEl = deleteBtn.createDiv();
             deleteIconEl.style.cssText = 'display: flex; align-items: center; width: 14px; height: 14px;';
             setIcon(deleteIconEl, 'trash');
-            deleteBtn.addEventListener('click', async () => {
+            deleteBtn.addEventListener('click', () => {
+                void (async () => {
                 const deletedName = group.name;
                 const hide = showGlobalLoading('Moving feeds...');
                 try {
@@ -360,6 +369,7 @@ export function openEditFoldersModal(
                 }
 
                 new Notice(`Deleted folder "${deletedName}"`);
+                })();
             });
         }
 

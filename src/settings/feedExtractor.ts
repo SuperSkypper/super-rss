@@ -1,5 +1,4 @@
 import { requestUrl } from 'obsidian';
-import Defuddle from 'defuddle/full';
 
 // ─── Raw types (no transformation applied) ───────────────────────────────────
 
@@ -410,6 +409,7 @@ export async function fetchFullContent(url: string): Promise<FullContent | null>
         base.href  = url;
         doc.head.appendChild(base);
 
+        const { default: Defuddle } = await import('defuddle/full');
         const result = new Defuddle(doc, { markdown: true, url }).parse();
 
         const content = result?.content?.trim() ?? '';

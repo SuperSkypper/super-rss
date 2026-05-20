@@ -105,7 +105,8 @@ export class AddUrlModal extends Modal {
 
         setButtonState(false);
 
-        addBtn.onclick = async () => {
+        addBtn.onclick = () => {
+            void (async () => {
             const sanitizedUrl = this.url.trim();
             if (!isValidUrl(sanitizedUrl)) {
                 new Notice('Enter a valid HTTP/HTTPS URL');
@@ -120,6 +121,7 @@ export class AddUrlModal extends Modal {
                 // onSubmit already shows a Notice on error; just restore the button
                 setButtonState(false);
             }
+            })();
         };
     }
 }
@@ -197,7 +199,7 @@ export async function addFeed(
         },
         () => {
             plugin.settings.feeds.splice(addedIndex, 1);
-            plugin.saveSettingsSilent();
+            void plugin.saveSettingsSilent();
             refresh?.();
         },
         true // isNew — onClose will call onDelete if user cancels

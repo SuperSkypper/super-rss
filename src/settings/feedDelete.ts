@@ -110,6 +110,36 @@ export function isFileProtected(app: App, file: TFile, propertyName: string): bo
     return val !== true && String(val).toLowerCase() !== 'true';
 }
 
+function getObsidianTrashUsesSystem(app: App): boolean {
+    const getConfig = (app.vault as any).getConfig?.bind(app.vault);
+    return getConfig?.('trashOption') !== 'local';
+}
+
+export async function discardVaultFile(app: App, file: TFile, settings?: PluginSettings): Promise<void> {
+    const behavior = settings?.deleteBehavior ?? 'obsidian';
+
+    if (behavior === 'direct') {
+        await app.vault.delete(file);
+        return;
+    }
+
+    const useSystem = behavior === 'system-trash'
+        ? true
+        : behavior === 'obsidian-trash'
+            ? false
+            : getObsidianTrashUsesSystem(app);
+
+    try {
+        await app.vault.trash(file, useSystem);
+    } catch (e) {
+        if (useSystem) {
+            await app.vault.trash(file, false);
+            return;
+        }
+        throw e;
+    }
+}
+
 // ─── Age-based cleanup ────────────────────────────────────────────────────────
 
 export async function cleanupOldFiles(
@@ -171,7 +201,7 @@ export async function cleanupOldFiles(
             }
 
             try {
-                await vault.delete(meta.file);
+                await discardVaultFile(app, meta.file, settings);
                 meta.deleted = true;
                 deletedCount++;
 
@@ -218,7 +248,7 @@ export async function cleanupOldFiles(
         }
 
         try {
-            await vault.delete(file);
+            await discardVaultFile(app, file, settings);
             deletedCount++;
 
             await registerOldArticle(
@@ -248,7 +278,8 @@ export async function cleanupOldFiles(
 export async function deleteLiveArticlesForFeed(
     app:      App,
     feedPath: string,
-    db:       AutoDatabase
+    db:       AutoDatabase,
+    settings?: PluginSettings
 ): Promise<number> {
     const { vault, metadataCache } = app;
     const normalizedFeedPath = normalizePath(feedPath);
@@ -272,7 +303,7 @@ export async function deleteLiveArticlesForFeed(
         if (!itemLink) continue;
 
         try {
-            await vault.delete(file);
+            await discardVaultFile(app, file, settings);
             deletedCount++;
 
             if (!(itemLink in db)) {
@@ -298,7 +329,8 @@ export async function deleteOrphanedDbArticles(
     vault:         Vault,
     app:           App,
     rssFolderPath: string,
-    fileCache?:    FileMeta[]
+    fileCache?:    FileMeta[],
+    settings?:     PluginSettings
 ): Promise<number> {
     const normalizedFolder = normalizePath(rssFolderPath);
     const db = await loadFeedDatabase(app);
@@ -316,7 +348,7 @@ export async function deleteOrphanedDbArticles(
             if (!entry || !DELETE_STATUSES.has(entry.status)) continue;
 
             try {
-                await vault.delete(meta.file);
+                await discardVaultFile(app, meta.file, settings);
                 meta.deleted = true;
                 deletedCount++;
                 console.log(`RSS Cleanup (orphan): deleted "${meta.file.path}" (status: ${entry.status})`);
@@ -340,7 +372,7 @@ export async function deleteOrphanedDbArticles(
         if (!entry || !DELETE_STATUSES.has(entry.status)) continue;
 
         try {
-            await vault.delete(file);
+            await discardVaultFile(app, file, settings);
             deletedCount++;
             console.log(`RSS Cleanup (orphan): deleted "${file.path}" (status: ${entry.status})`);
         } catch (e) {
@@ -388,7 +420,7 @@ export async function cleanupReadFiles(
             }
 
             try {
-                await vault.delete(meta.file);
+                await discardVaultFile(app, meta.file, settings);
                 meta.deleted = true;
                 deletedCount++;
 
@@ -421,7 +453,7 @@ export async function cleanupReadFiles(
             }
 
             try {
-                await vault.delete(file);
+                await discardVaultFile(app, file, settings);
                 deletedCount++;
 
                 await registerOldArticle(
@@ -485,7 +517,8 @@ export async function runAutoCleanup(
         app.vault,
         app,
         plugin.settings.folderPath,
-        fileCache
+        fileCache,
+        plugin.settings
     );
 
     if (plugin.settings.markAsReadEnabled && plugin.settings.markAsReadDeleteArticles) {

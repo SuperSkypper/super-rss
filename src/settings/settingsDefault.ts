@@ -45,13 +45,26 @@ export interface FeedGroup {
     collapsed?: boolean;
 }
 
+export type FrontmatterPropertyType = 'text' | 'list' | 'number' | 'checkbox' | 'date' | 'datetime';
+export type FrontmatterMode = 'properties' | 'source';
+
+export interface FrontmatterPropertyTemplate {
+    id:    string;
+    name:  string;
+    type:  FrontmatterPropertyType;
+    value: string;
+}
+
 export type ImageLocation = 'obsidian' | 'vault' | 'current' | 'subfolder' | 'specified';
+export type DeleteBehavior = 'obsidian' | 'direct' | 'obsidian-trash' | 'system-trash';
 
 export interface PluginSettings {
     pluginEnabled:               boolean;
     folderPath:                  string;
     template:                    string;
     frontmatterTemplate:         string;
+    frontmatterMode:             FrontmatterMode;
+    frontmatterProperties:       FrontmatterPropertyTemplate[];
     fileNameTemplate:            string;
     updateIntervalValue:         number;
     updateIntervalUnit:          'minutes' | 'hours' | 'days' | 'months';
@@ -62,6 +75,7 @@ export interface PluginSettings {
     autoCleanupCheckPropertyName: string;
     feeds:                       FeedConfig[];
     groups:                      FeedGroup[];
+    deleteBehavior:              DeleteBehavior;
     downloadImages:              boolean;
     imageLocation:               ImageLocation;
     imagesFolder:                string;
@@ -100,6 +114,19 @@ Date Saved: {{datesaved}}
 Snippet: {{snippet}}
 Tags: {{tags}}`;
 
+const DEFAULT_FRONTMATTER_PROPERTIES: FrontmatterPropertyTemplate[] = [
+    { id: 'title',          name: 'Title',          type: 'text',     value: '{{title}}' },
+    { id: 'author',         name: 'Author',         type: 'text',     value: '{{author}}' },
+    { id: 'feed',           name: 'Feed',           type: 'text',     value: '{{feedname}}' },
+    { id: 'link',           name: 'Link',           type: 'text',     value: '{{link}}' },
+    { id: 'image',          name: 'Image',          type: 'text',     value: '{{image}}' },
+    { id: 'duration',       name: 'Duration',       type: 'text',     value: '{{ytduration}}' },
+    { id: 'date-published', name: 'Date Published', type: 'datetime', value: '{{datepublished}}' },
+    { id: 'date-saved',     name: 'Date Saved',     type: 'datetime', value: '{{datesaved}}' },
+    { id: 'snippet',        name: 'Snippet',        type: 'text',     value: '{{snippet}}' },
+    { id: 'tags',           name: 'Tags',           type: 'list',     value: '{{tags}}' },
+];
+
 // All variables available in content scope (includes {{content}}):
 const DEFAULT_CONTENT_TEMPLATE =
 `{{image}}
@@ -115,6 +142,8 @@ export const DEFAULT_SETTINGS: PluginSettings = {
     folderPath:                  'RSS',
     fileNameTemplate:            DEFAULT_FILENAME_TEMPLATE,
     frontmatterTemplate:         DEFAULT_FRONTMATTER_TEMPLATE,
+    frontmatterMode:             'properties',
+    frontmatterProperties:       DEFAULT_FRONTMATTER_PROPERTIES,
     template:                    DEFAULT_CONTENT_TEMPLATE,
     updateIntervalValue:         60,
     updateIntervalUnit:          'minutes',
@@ -125,6 +154,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
     autoCleanupCheckPropertyName: 'Read',
     feeds:                       [],
     groups:                      [],
+    deleteBehavior:              'obsidian',
     downloadImages:              false,
     imageLocation:               'obsidian',
     imagesFolder:                'attachments',

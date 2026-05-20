@@ -1,5 +1,6 @@
-import { Notice } from 'obsidian';
-import RssPlugin from '../main';
+import { Notice, setIcon } from 'obsidian';
+import RssPlugin, { FrontmatterMode, FrontmatterPropertyTemplate } from '../main';
+import { migrateLegacyFrontmatterTemplate } from './frontmatterMigration';
 
 // ─── Variable definitions ─────────────────────────────────────────────────────
 // Single source of truth — imported by editFeed.ts too.
@@ -106,7 +107,7 @@ export function renderGlobalTemplateTab(
 
     renderVariableReference(containerEl);
     renderFileNameSetting(containerEl, plugin);
-    renderTextAreaSetting(containerEl, plugin, autoResize, 'frontmatter');
+    renderFrontmatterModeSetting(containerEl, plugin, autoResize);
     renderTextAreaSetting(containerEl, plugin, autoResize, 'content');
 }
 
@@ -190,12 +191,14 @@ export function renderVariableReference(containerEl: HTMLElement): void {
             }
         };
 
-        row.onclick = handleCopy;
+        row.onclick = () => {
+            void handleCopy();
+        };
 
         row.onkeydown = (e: KeyboardEvent) => {
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                handleCopy();
+                void handleCopy();
             }
         };
     });
@@ -203,12 +206,17 @@ export function renderVariableReference(containerEl: HTMLElement): void {
 
 // ─── File name setting ────────────────────────────────────────────────────────
 
-function debounce<T extends (...args: any[]) => void>(fn: T, ms: number): T {
+function debounce<T extends (...args: any[]) => void | Promise<void>>(
+    fn: T,
+    ms: number
+): (...args: Parameters<T>) => void {
     let timer: ReturnType<typeof setTimeout>;
     return ((...args: any[]) => {
         clearTimeout(timer);
-        timer = setTimeout(() => fn(...args), ms);
-    }) as T;
+        timer = setTimeout(() => {
+            void fn(...args);
+        }, ms);
+    }) as (...args: Parameters<T>) => void;
 }
 
 function renderFileNameSetting(
@@ -239,7 +247,9 @@ function renderFileNameSetting(
         await plugin.saveSettings();
     }, 400);
 
-    input.oninput = () => saveFileName();
+    input.oninput = () => {
+        void saveFileName();
+    };
 }
 
 // ─── Textarea settings ────────────────────────────────────────────────────────
@@ -276,6 +286,312 @@ function setTemplateSetting(plugin: RssPlugin, key: TemplateSettingsKey, value: 
     (plugin.settings[key as keyof typeof plugin.settings] as string) = value;
 }
 
+function createPropertyId(): string {
+    return `prop-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function getKnownPropertyNames(plugin: RssPlugin): string[] {
+    const names = new Map<string, string>();
+    const addName = (name: string, overwrite = false) => {
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        const key = trimmed.toLocaleLowerCase();
+        if (overwrite || !names.has(key)) names.set(key, trimmed);
+    };
+
+    plugin.settings.frontmatterProperties?.forEach(property => {
+        addName(property.name, true);
+    });
+
+    const cache = (plugin.app.metadataCache as any);
+    const propertyInfos = cache.getAllPropertyInfos?.();
+    if (propertyInfos && typeof propertyInfos === 'object') {
+        Object.entries(propertyInfos).forEach(([name, info]: [string, any]) => {
+            addName(info?.name ?? info?.displayName ?? name);
+        });
+    }
+
+    plugin.app.vault.getMarkdownFiles().forEach(file => {
+        const frontmatter = plugin.app.metadataCache.getFileCache(file)?.frontmatter;
+        if (!frontmatter) return;
+        Object.keys(frontmatter)
+            .filter(name => name !== 'position')
+            .forEach(name => addName(name));
+    });
+
+    return [...names.values()].sort((a, b) => new Intl.Collator(undefined, { sensitivity: 'base' }).compare(a, b));
+}
+
+function ensureFrontmatterProperties(plugin: RssPlugin): FrontmatterPropertyTemplate[] {
+    if (!Array.isArray(plugin.settings.frontmatterProperties)) {
+        plugin.settings.frontmatterProperties = [];
+    }
+    return plugin.settings.frontmatterProperties;
+}
+
+function normalizeProperty(property: Partial<FrontmatterPropertyTemplate>): FrontmatterPropertyTemplate {
+    return {
+        id:    property.id || createPropertyId(),
+        name:  property.name ?? '',
+        type:  property.type ?? 'text',
+        value: property.value ?? '',
+    };
+}
+
+function renderPropertyTemplateSource(property: FrontmatterPropertyTemplate): string {
+    const name = property.name.trim();
+    const value = property.value.trim();
+    if (!value) return `${name}:`;
+    return `${name}: ${property.value}`;
+}
+
+function renderPropertiesAsSource(properties: FrontmatterPropertyTemplate[]): string {
+    return properties
+        .map(normalizeProperty)
+        .filter(property => property.name.trim())
+        .map(renderPropertyTemplateSource)
+        .join('\n');
+}
+
+function renderFrontmatterModeSetting(
+    containerEl: HTMLElement,
+    plugin: RssPlugin,
+    autoResize: (el: HTMLTextAreaElement) => void
+): void {
+    const wrapper = createCardWrapper(containerEl);
+    createCardHeader(wrapper, '🗂️', 'Properties / Frontmatter');
+
+    const desc = wrapper.createEl('p', {
+        text: 'Add note properties. Supports all variables except {{content}}.',
+    });
+    desc.style.cssText = 'color:var(--text-muted);font-size:0.85em;margin:0 0 10px;';
+
+    const modeControls = wrapper.createDiv();
+    modeControls.style.cssText = 'display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;';
+
+    const body = wrapper.createDiv();
+
+    const setMode = (mode: FrontmatterMode) => {
+        const currentMode = plugin.settings.frontmatterMode;
+        if (mode === currentMode) return;
+
+        if (mode === 'properties' && plugin.settings.frontmatterMode === 'source') {
+            const migrated = migrateLegacyFrontmatterTemplate(plugin.settings.frontmatterTemplate ?? '');
+            if (migrated?.length) {
+                plugin.settings.frontmatterProperties = migrated;
+            }
+        } else if (mode === 'source' && plugin.settings.frontmatterMode === 'properties') {
+            plugin.settings.frontmatterTemplate = renderPropertiesAsSource(ensureFrontmatterProperties(plugin));
+        }
+        plugin.settings.frontmatterMode = mode;
+        renderModeButtons();
+        renderModeBody();
+        void plugin.saveSettings();
+    };
+
+    const editBtn = modeControls.createEl('button', { text: 'Edit Mode', attr: { type: 'button' } });
+    const sourceBtn = modeControls.createEl('button', { text: 'Source Mode', attr: { type: 'button' } });
+
+    const buttonBase = 'padding:5px 10px;border-radius:6px;border:1px solid var(--background-modifier-border);cursor:pointer;font-size:0.85em;';
+    const renderModeButtons = () => {
+        const active = 'background:var(--interactive-accent);color:var(--text-on-accent);border-color:var(--interactive-accent);';
+        const inactive = 'background:var(--background-primary);color:var(--text-muted);';
+        editBtn.style.cssText = buttonBase + (plugin.settings.frontmatterMode === 'properties' ? active : inactive);
+        sourceBtn.style.cssText = buttonBase + (plugin.settings.frontmatterMode === 'source' ? active : inactive);
+    };
+
+    const renderModeBody = () => {
+        body.empty();
+        if (plugin.settings.frontmatterMode === 'source') {
+            renderSourceFrontmatter(body, plugin, autoResize);
+        } else {
+            renderPropertiesEditor(body, plugin);
+        }
+    };
+
+    editBtn.onclick = () => setMode('properties');
+    sourceBtn.onclick = () => setMode('source');
+
+    renderModeButtons();
+    renderModeBody();
+}
+
+function renderPropertiesEditor(containerEl: HTMLElement, plugin: RssPlugin): void {
+    const desc = containerEl.createEl('p', {
+        text: 'Choose a name and value.',
+    });
+    desc.style.cssText = 'color:var(--text-muted);font-size:0.85em;margin:0 0 10px;';
+
+    const list = containerEl.createDiv();
+    list.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+
+    const datalistId = `rss-property-names-${Date.now()}`;
+    const datalist = containerEl.createEl('datalist', { attr: { id: datalistId } });
+    getKnownPropertyNames(plugin).forEach(name => datalist.createEl('option', { value: name }));
+
+    const save = debounce(async () => {
+        await plugin.saveSettings();
+    }, 300);
+
+    const rerender = () => {
+        list.empty();
+        const properties = ensureFrontmatterProperties(plugin);
+        properties.forEach((property, index) => {
+            const normalized = normalizeProperty(property);
+            properties[index] = normalized;
+            renderPropertyRow(list, plugin, normalized, index, datalistId, rerender, save);
+        });
+    };
+
+    const addBtn = containerEl.createEl('button', { text: '+ Add property', attr: { type: 'button' } });
+    addBtn.style.cssText = `
+        margin-top:10px;
+        border:1px solid var(--background-modifier-border);
+        border-radius:6px;
+        background:var(--background-primary);
+        color:var(--text-accent);
+        font-weight:600;
+        cursor:pointer;
+        padding:6px 10px;
+        width:max-content;
+    `;
+    addBtn.onclick = () => {
+        ensureFrontmatterProperties(plugin).push({
+            id: createPropertyId(),
+            name: '',
+            type: 'text',
+            value: '',
+        });
+        rerender();
+        void save();
+    };
+
+    rerender();
+}
+
+function renderPropertyRow(
+    container: HTMLElement,
+    plugin: RssPlugin,
+    property: FrontmatterPropertyTemplate,
+    index: number,
+    datalistId: string,
+    rerender: () => void,
+    save: () => void
+): void {
+    const row = container.createDiv();
+    row.style.cssText = `
+        display:grid;
+        grid-template-columns:24px minmax(130px, 0.8fr) minmax(180px, 1.5fr) 28px;
+        gap:7px;
+        align-items:center;
+        border-radius:6px;
+        border-top:2px solid transparent;
+        padding-top:2px;
+    `;
+
+    row.ondragstart = event => {
+        event.dataTransfer?.setData('text/plain', String(index));
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+        row.style.opacity = '0.5';
+    };
+    row.ondragend = () => {
+        row.style.opacity = '1';
+        row.style.borderTopColor = 'transparent';
+    };
+    row.ondragover = event => {
+        event.preventDefault();
+        row.style.borderTopColor = 'var(--interactive-accent)';
+    };
+    row.ondragleave = () => {
+        row.style.borderTopColor = 'transparent';
+    };
+    row.ondrop = event => {
+        event.preventDefault();
+        row.style.borderTopColor = 'transparent';
+        const from = Number(event.dataTransfer?.getData('text/plain'));
+        if (!Number.isInteger(from) || from === index) return;
+        const properties = ensureFrontmatterProperties(plugin);
+        const [moved] = properties.splice(from, 1);
+        if (!moved) return;
+        properties.splice(index, 0, moved);
+        rerender();
+        void save();
+    };
+
+    const drag = row.createEl('button', { attr: { 'aria-label': 'Drag property', type: 'button' } });
+    drag.draggable = true;
+    drag.style.cssText = 'width:24px;height:28px;padding:0;border:none;background:transparent;color:var(--text-muted);cursor:grab;display:flex;align-items:center;justify-content:center;';
+    setIcon(drag, 'grip-vertical');
+
+    const nameInput = row.createEl('input', {
+        type: 'text',
+        attr: {
+            list: datalistId,
+            placeholder: 'Property name',
+            'aria-label': 'Property name',
+        },
+    });
+    nameInput.value = property.name;
+    nameInput.style.cssText = 'width:100%;box-sizing:border-box;font-size:0.85em;';
+    nameInput.oninput = () => {
+        property.name = nameInput.value;
+        void save();
+    };
+
+    const valueInput = row.createEl('input', {
+        type: 'text',
+        attr: {
+            placeholder: 'Property value',
+            'aria-label': 'Property value',
+        },
+    });
+    valueInput.value = property.value;
+    valueInput.style.cssText = 'width:100%;box-sizing:border-box;font-family:var(--font-monospace);font-size:0.85em;';
+    valueInput.oninput = () => {
+        property.value = valueInput.value;
+        void save();
+    };
+
+    const deleteBtn = row.createEl('button', { attr: { 'aria-label': 'Delete property', type: 'button' } });
+    deleteBtn.style.cssText = 'width:28px;height:28px;padding:0;border:none;background:transparent;color:var(--text-muted);display:flex;align-items:center;justify-content:center;cursor:pointer;';
+    setIcon(deleteBtn, 'trash-2');
+    deleteBtn.onclick = () => {
+        ensureFrontmatterProperties(plugin).splice(index, 1);
+        rerender();
+        void save();
+    };
+}
+
+function renderSourceFrontmatter(
+    container: HTMLElement,
+    plugin: RssPlugin,
+    autoResize: (el: HTMLTextAreaElement) => void
+): void {
+    const textarea = container.createEl('textarea', {
+        attr: { 'aria-label': 'Source frontmatter template' },
+    });
+    textarea.value = plugin.settings.frontmatterTemplate ?? '';
+    textarea.style.cssText = `
+        width:100%;box-sizing:border-box;
+        font-family:var(--font-monospace);
+        font-size:0.85em;
+        min-height:150px;
+        resize:vertical;overflow:auto;
+    `;
+
+    const saveTextarea = debounce(async () => {
+        plugin.settings.frontmatterTemplate = textarea.value;
+        await plugin.saveSettings();
+    }, 400);
+
+    textarea.oninput = () => {
+        autoResize(textarea);
+        void saveTextarea();
+    };
+
+    requestAnimationFrame(() => autoResize(textarea));
+}
+
 function renderTextAreaSetting(
     containerEl: HTMLElement,
     plugin: RssPlugin,
@@ -308,7 +624,7 @@ function renderTextAreaSetting(
 
     textarea.oninput = () => {
         autoResize(textarea);
-        saveTextarea();
+        void saveTextarea();
     };
 
     requestAnimationFrame(() => autoResize(textarea));

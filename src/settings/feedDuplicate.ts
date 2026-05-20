@@ -1,7 +1,7 @@
 import { App, normalizePath, TFile } from 'obsidian';
 import RssPlugin from '../main';
-import { FeedDatabase } from './feedDatabase';
-import { FileMeta, resolveLinkFromFile } from './feedDelete';
+import { FeedDatabase, loadAutoDatabase, loadUserDatabase, registerOldArticle } from './feedDatabase';
+import { FileMeta, discardVaultFile, readPubDateFromFrontmatter, resolveLinkFromFile } from './feedDelete';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -58,8 +58,12 @@ export function injectDuplicateTag(frontmatter: string): string {
 // ─── Tag duplicates in vault ──────────────────────────────────────────────────
 
 export async function tagDuplicatesInVault(app: App, plugin: RssPlugin, fileCache?: FileMeta[]): Promise<number> {
-    const { vault, metadataCache } = app;
+    const { vault } = app;
     const rssFolderPath = normalizePath(plugin.settings.folderPath);
+    const [autoDb, userDb] = await Promise.all([
+        loadAutoDatabase(app),
+        loadUserDatabase(app),
+    ]);
 
     const linkToFiles = new Map<string, TFile[]>();
 
@@ -89,7 +93,7 @@ export async function tagDuplicatesInVault(app: App, plugin: RssPlugin, fileCach
 
     let processed = 0;
 
-    for (const [, group] of linkToFiles) {
+    for (const [link, group] of linkToFiles) {
         if (group.length > 1) {
             // Sort files by creation time, ascending (oldest first)
             group.sort((a, b) => a.stat.ctime - b.stat.ctime);
@@ -99,12 +103,23 @@ export async function tagDuplicatesInVault(app: App, plugin: RssPlugin, fileCach
 
             for (const file of duplicates) {
                 try {
-                    await vault.delete(file);
+                    const cachedMeta = fileCache?.find(m => m.file === file);
+                    const pubDate = cachedMeta?.pubDate ?? await readPubDateFromFrontmatter(app, vault, file);
+                    await discardVaultFile(app, file, plugin.settings);
+                    await registerOldArticle(
+                        app,
+                        autoDb,
+                        userDb,
+                        link,
+                        String(pubDate ?? file.stat.ctime),
+                        plugin.settings.markAsReadEnabled,
+                        file.basename,
+                    );
                     console.log(`RSS: deleted duplicate file "${file.path}"`);
                     processed++;
 
                     if (fileCache) {
-                        const meta = fileCache.find(m => m.file === file);
+                        const meta = cachedMeta ?? fileCache.find(m => m.file === file);
                         if (meta) meta.deleted = true;
                     }
                 } catch (e) {

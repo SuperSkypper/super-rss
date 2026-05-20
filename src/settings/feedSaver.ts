@@ -1,5 +1,5 @@
 import { App, Vault, normalizePath } from 'obsidian';
-import { FeedItem, FeedConfig, PluginSettings } from '../main';
+import { FeedItem, FeedConfig, FrontmatterPropertyTemplate, PluginSettings } from '../main';
 import { sanitizeFileName } from './feedProcessor';
 import { downloadImageLocally, resolveObsidianAttachmentPath } from './imageHandler';
 import { buildMarkAsReadLink } from './feedMarkAsRead';
@@ -205,8 +205,14 @@ export async function saveFeedItem(
     const shouldInjectLive   = tagLiveEnabled && isLiveStream(item.title ?? '', settings.tagLiveKeywords ?? '');
 
     // ── Build frontmatter ─────────────────────────────────────────────────────
-    const frontmatterTemplate  = feed.frontmatterTemplate || settings.frontmatterTemplate;
-    let   processedFrontmatter = applyTemplate(frontmatterTemplate, item, false, true, feedName, dateSaved);
+    let processedFrontmatter = '';
+    if (feed.frontmatterTemplate) {
+        processedFrontmatter = applyTemplate(feed.frontmatterTemplate, item, false, true, feedName, dateSaved);
+    } else if (settings.frontmatterMode !== 'source' && settings.frontmatterProperties?.length) {
+        processedFrontmatter = renderFrontmatterProperties(app, settings.frontmatterProperties, item, feedName, dateSaved);
+    } else {
+        processedFrontmatter = applyTemplate(settings.frontmatterTemplate, item, false, true, feedName, dateSaved);
+    }
 
     if (shouldInjectShorts)  processedFrontmatter = injectShortsTag(processedFrontmatter);
     if (shouldInjectLive)    processedFrontmatter = injectLiveTag(processedFrontmatter);
@@ -343,6 +349,90 @@ function escapeYamlValue(value: any): string {
     return String(value).replace(/"/g, '\\"');
 }
 
+function quoteYamlString(value: string): string {
+    return `"${escapeYamlValue(value)}"`;
+}
+
+function getKnownPropertyType(app: App, name: string): string | undefined {
+    const propertyInfos = (app.metadataCache as any).getAllPropertyInfos?.();
+    if (!propertyInfos || typeof propertyInfos !== 'object') return undefined;
+
+    const direct = propertyInfos[name]?.type;
+    if (typeof direct === 'string') return direct;
+
+    const lowerName = name.toLocaleLowerCase();
+    const key = Object.keys(propertyInfos).find(k => k.toLocaleLowerCase() === lowerName);
+    const type = key ? propertyInfos[key]?.type : undefined;
+    return typeof type === 'string' ? type : undefined;
+}
+
+function normalizePropertyType(type: string | undefined): string | undefined {
+    if (!type) return undefined;
+    const normalized = type.toLocaleLowerCase().replace(/[\s_-]+/g, '');
+    if (['checkbox', 'boolean', 'bool'].includes(normalized)) return 'checkbox';
+    if (['number', 'numeric'].includes(normalized)) return 'number';
+    if (['date'].includes(normalized)) return 'date';
+    if (['datetime', 'dateandtime'].includes(normalized)) return 'datetime';
+    if (['aliases', 'alias', 'multitext', 'list', 'tags', 'tag'].includes(normalized)) return 'list';
+    if (['text', 'string'].includes(normalized)) return 'text';
+    return normalized;
+}
+
+function formatKnownPropertyValue(name: string, value: string, type: string | undefined): string {
+    const trimmed = value.trim();
+    if (!trimmed) return `${name}:`;
+
+    const normalizedType = normalizePropertyType(type);
+    if (!normalizedType && /^(true|false)$/i.test(trimmed)) {
+        return `${name}: ${trimmed.toLocaleLowerCase()}`;
+    }
+    if (!normalizedType && (
+        /^\d{4}-\d{2}-\d{2}(?:[T ][0-9:.+-]+)?$/.test(trimmed)
+        || /^\{\{(?:datepublished|datepub|datesaved)\}\}$/i.test(trimmed)
+    )) {
+        return `${name}: ${trimmed}`;
+    }
+
+    switch (normalizedType) {
+        case 'checkbox':
+            return `${name}: ${/^(true|yes|1|on)$/i.test(trimmed) ? 'true' : 'false'}`;
+        case 'number':
+            return `${name}: ${trimmed}`;
+        case 'date':
+        case 'datetime':
+            return `${name}: ${trimmed}`;
+        case 'aliases':
+        case 'multitext':
+        case 'tags': {
+            const values = trimmed.includes('\n')
+                ? trimmed.split(/\r?\n/).map(v => v.trim()).filter(Boolean)
+                : trimmed.split(',').map(v => v.trim()).filter(Boolean);
+            if (values.length === 0) return `${name}:`;
+            return `${name}:\n${values.map(v => `  - ${quoteYamlString(v)}`).join('\n')}`;
+        }
+        case 'text':
+        default:
+            return `${name}: ${quoteYamlString(value)}`;
+    }
+}
+
+function renderFrontmatterProperties(
+    app: App,
+    properties: FrontmatterPropertyTemplate[],
+    item: FeedItem,
+    feedName: string,
+    dateSaved: string
+): string {
+    return properties
+        .filter(property => property.name.trim())
+        .map(property => {
+            const name = property.name.trim();
+            const rendered = applyTemplate(property.value, item, false, true, feedName, dateSaved);
+            return formatKnownPropertyValue(name, rendered, getKnownPropertyType(app, name));
+        })
+        .join('\n');
+}
+
 const KNOWN_PLACEHOLDERS = new Set([
     'title', 'link', 'snippet', 'image', 'datepublished', 'datepub', 'datesaved',
     'content', 'feedname', 'tags', 'author', 'ytduration', 'duration',
@@ -411,10 +501,7 @@ export function applyTemplate(
     // Author
     const authorValue = item.author ?? '';
     if (isYaml) {
-        result = result.replace(/"{{author}}"/g,          `"${escapeYamlValue(authorValue)}"`);
-        result = result.replace(/"\[\[{{author}}\]\]"/g,  `"[[${escapeYamlValue(authorValue)}]]"`);
-        result = result.replace(/\[\[{{author}}\]\]/g,    `"[[${escapeYamlValue(authorValue)}]]"`);
-        result = result.replace(/{{author}}/g,            `"${escapeYamlValue(authorValue)}"`);
+        result = result.replace(/{{author}}/g, escapeYamlValue(authorValue));
     } else {
         result = result
             .replace(/"{{author}}"/g,       authorValue)
@@ -424,10 +511,7 @@ export function applyTemplate(
 
     // Feed name
     if (isYaml) {
-        result = result.replace(/"{{feedname}}"/gi,         `"${escapeYamlValue(feedName)}"`);
-        result = result.replace(/"\[\[{{feedname}}\]\]"/gi, `"[[${escapeYamlValue(feedName)}]]"`);
-        result = result.replace(/\[\[{{feedname}}\]\]/gi,   `"[[${escapeYamlValue(feedName)}]]"`);
-        result = result.replace(/{{feedname}}/gi,           `"${escapeYamlValue(feedName)}"`);
+        result = result.replace(/{{feedname}}/gi, escapeYamlValue(feedName));
     } else {
         result = result
             .replace(/"{{feedname}}"/gi,       feedName)
@@ -437,9 +521,9 @@ export function applyTemplate(
 
     const titleValue = item.title ?? 'Untitled';
     result = result
-        .replace(/{{title}}/g,      isYaml ? `"${escapeYamlValue(titleValue)}"` : sanitize(titleValue))
-        .replace(/{{link}}/g,       isYaml ? `"${escapeYamlValue(item.link ?? '')}"` : String(item.link ?? ''))
-        .replace(/{{snippet}}/g,    isYaml ? `"${escapeYamlValue(item.descriptionShort ?? item.description ?? '')}"` : String(item.descriptionShort ?? item.description ?? ''))
+        .replace(/{{title}}/g,      sanitize(titleValue))
+        .replace(/{{link}}/g,       sanitize(item.link ?? ''))
+        .replace(/{{snippet}}/g,    sanitize(item.descriptionShort ?? item.description ?? ''))
         .replace(/{{image}}/g,      imageValue)
         .replace(/{{datepublished}}/g, datePub)
         .replace(/{{datepub}}/g,       datePub)          // backward compat
