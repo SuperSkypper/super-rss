@@ -102,7 +102,7 @@ function accentBorder(el: HTMLElement, active: boolean): void {
 
 function createCardWrapper(containerEl: HTMLElement): HTMLDivElement {
     const wrapper = containerEl.createDiv();
-    wrapper.style.cssText = CARD_STYLE;
+    applyCssText(wrapper, CARD_STYLE);
     if (!isTouchDevice()) {
         wrapper.onmouseenter = () => accentBorder(wrapper, true);
         wrapper.onmouseleave = () => accentBorder(wrapper, false);
@@ -186,7 +186,7 @@ export function renderVariableReference(containerEl: HTMLElement): void {
                 'aria-label': `Copy variable ${v.tag}`,
             },
         });
-        row.style.cssText = ROW_STYLE + (isTouchDevice() ? 'min-height:44px;' : '');
+        applyCssText(row, ROW_STYLE + (isTouchDevice() ? 'min-height:44px;' : ''));
 
         if (!isTouchDevice()) {
             row.onmouseenter = () => accentBorder(row, true);
@@ -418,8 +418,8 @@ function renderFrontmatterModeSetting(
     const renderModeButtons = () => {
         const active = 'background:var(--interactive-accent);color:var(--text-on-accent);border-color:var(--interactive-accent);';
         const inactive = 'background:var(--background-primary);color:var(--text-muted);';
-        editBtn.style.cssText = buttonBase + (plugin.settings.frontmatterMode === 'properties' ? active : inactive);
-        sourceBtn.style.cssText = buttonBase + (plugin.settings.frontmatterMode === 'source' ? active : inactive);
+        applyCssText(editBtn, buttonBase + (plugin.settings.frontmatterMode === 'properties' ? active : inactive));
+        applyCssText(sourceBtn, buttonBase + (plugin.settings.frontmatterMode === 'source' ? active : inactive));
     };
 
     const renderModeBody = () => {

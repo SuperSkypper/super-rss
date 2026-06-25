@@ -129,7 +129,7 @@ function createVirtualList(
     const updateLayout = () => {
         cardHeight = getFeedCardHeight();
         const totalHeight = items.length * cardHeight;
-        innerEl.style.height = totalHeight + 'px';
+        innerEl.setCssProps({ height: totalHeight + 'px' });
 
         const scrollTop    = scrollEl.scrollTop;
         const viewHeight   = scrollEl.clientHeight || 520;
@@ -161,9 +161,9 @@ function createVirtualList(
         renderedStart = newStart;
         renderedEnd   = newEnd;
 
-        spacerTop.style.height = (newStart * cardHeight) + 'px';
-        spacerBot.style.top    = (newEnd * cardHeight) + 'px';
-        spacerBot.style.height = Math.max(0, (items.length - newEnd) * cardHeight) + 'px';
+        spacerTop.setCssProps({ height: (newStart * cardHeight) + 'px' });
+        spacerBot.setCssProps({ top: (newEnd * cardHeight) + 'px' });
+        spacerBot.setCssProps({ height: Math.max(0, (items.length - newEnd) * cardHeight) + 'px' });
     };
 
     // ── Throttled scroll handler ──────────────────────────────────────────────
@@ -342,7 +342,7 @@ export function renderMyFeedsTab(
     // ── Controls card renderer ────────────────────────────────────────────────
     const renderControlsCard = () => {
         controlsCard.empty();
-        controlsCard.style.removeProperty('border-color');
+        controlsCard.setCssProps({ 'border-color': '' });
 
         // ── Trash tab ─────────────────────────────────────────────────────────
         if (activeFilter === 'trash') {
@@ -397,7 +397,7 @@ export function renderMyFeedsTab(
                 applyCssText(restoreIcon, 'display: flex; align-items: center; width: 15px; height: 15px; flex-shrink: 0;');
                 setIcon(restoreIcon, 'undo');
                 const restoreLabel = restoreBtn.createSpan({ text: 'Restore' });
-                const updateRestoreLabel = () => { restoreLabel.style.display = controlsCard.offsetWidth < 480 ? 'none' : ''; };
+                const updateRestoreLabel = () => { restoreLabel.setCssProps({ display: controlsCard.offsetWidth < 480 ? 'none' : '' }); };
                 updateRestoreLabel();
                 const restoreRo = new ResizeObserver(updateRestoreLabel);
                 restoreRo.observe(controlsCard);
@@ -431,7 +431,7 @@ export function renderMyFeedsTab(
                 setIcon(delIcon, 'trash');
                 const delLabel = delBtn.createSpan({ text: 'Delete permanently' });
 
-                const updateDelLabel = () => { delLabel.style.display = controlsCard.offsetWidth < 480 ? 'none' : ''; };
+                const updateDelLabel = () => { delLabel.setCssProps({ display: controlsCard.offsetWidth < 480 ? 'none' : '' }); };
                 updateDelLabel();
                 const delRo = new ResizeObserver(updateDelLabel);
                 delRo.observe(controlsCard);
@@ -455,7 +455,7 @@ export function renderMyFeedsTab(
                 });
 
             } else {
-                controlsCard.style.removeProperty('border-color');
+                controlsCard.setCssProps({ 'border-color': '' });
                 const label = controlsCard.createSpan({ text: 'Select all' });
                 applyCssText(label, 'font-size: 0.82em; color: var(--text-muted);');
             }
@@ -548,7 +548,7 @@ export function renderMyFeedsTab(
                 setIcon(iconEl, icon);
                 const labelEl = btn.createSpan({ text: label });
 
-                const updateLabel = () => { labelEl.style.display = controlsCard.offsetWidth < 480 ? 'none' : ''; };
+                const updateLabel = () => { labelEl.setCssProps({ display: controlsCard.offsetWidth < 480 ? 'none' : '' }); };
                 updateLabel();
 
                 const ro = new ResizeObserver(updateLabel);
@@ -919,8 +919,10 @@ function renderFeedCard(
             const vh = window.innerHeight;
             let top = rect.bottom + 4;
             if (top + popH > vh - 8) top = rect.top - popH - 4;
-            pop.style.top  = `${top}px`;
-            pop.style.left = `${rect.left}px`;
+            pop.setCssProps({
+                top: `${top}px`,
+                left: `${rect.left}px`,
+            });
 
             const close = (ev: MouseEvent) => {
                 if (!pop.contains(ev.target as Node) && ev.target !== badge) {
