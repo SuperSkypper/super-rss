@@ -1,4 +1,11 @@
-# Changelog - v0.0.6 (Pre-release)
+# Changelog - v0.0.7
+
+## Community review fixes
+- Removed remaining direct style assignments from source files so UI styling uses Obsidian-compatible helpers such as `setCssProps`.
+- Published this as a fresh release so the community validator reads the corrected source and release assets.
+- Kept release artifact attestations enabled for the distributed assets.
+
+# Changelog - v0.0.6
 
 ## New features & improvements
 - Added a new properties-based frontmatter editor with drag-and-drop ordering, property name suggestions, and a source mode fallback for advanced templates.

@@ -1,7 +1,7 @@
 {
 	"id": "super-rss",
 	"name": "Super RSS",
-	"version": "0.0.6",
+	"version": "0.0.7",
 	"minAppVersion": "1.4.0",
 	"description": "Save RSS feed articles as notes with cleanup, templates, and read tracking.",
 	"author": "@SuperSkypper",
