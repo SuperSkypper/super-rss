@@ -1,13 +1,33 @@
 # Changelog - v0.0.6 (Pre-release)
 
 ## New features & improvements
-- Added the frontmatter migration settings flow.
-- Expanded template and feed settings controls for the first stable release.
-- Improved feed cleanup, duplication, mark-as-read, and saver behavior.
+- Added a new properties-based frontmatter editor with drag-and-drop ordering, property name suggestions, and a source mode fallback for advanced templates.
+- Added automatic migration for legacy frontmatter templates when they can be converted into editable properties.
+- Added support for typed Obsidian properties when saving articles, including text, lists, numbers, checkboxes, dates, and datetimes.
+- Added new template variables: `{{datepublished}}`, `{{ytduration}}`, and `{{tags}}`, while keeping `{{datepub}}`, `{{duration}}`, and `{{#tags}}` for backward compatibility.
+- Added a manual **Delete old articles now** command and optional ribbon button that runs cleanup and duplicate removal on demand.
+- Added configurable delete behavior for cleanup and duplicate removal: use the Obsidian default, move to Obsidian trash, move to system trash, or delete permanently.
+- Moved auto-update enablement to device-specific local settings, so background updates can be enabled per device instead of syncing through vault data.
+- Deferred heavier startup work until the workspace layout is ready, reducing plugin load impact.
+- Improved the feeds list and bulk edit UI with search/filter refinements, clearer per-feed rule controls, folder badges, archive/trash actions, and more consistent styling.
+- Added BRAT installation guidance and switched manual installation instructions toward the packaged `super-rss.zip`.
+
+## Cleanup, saving, and feed processing
+- Cleanup now respects the selected delete behavior across old articles, read articles, live articles, orphaned database entries, and duplicate files.
+- Duplicate removal now registers discarded duplicate articles in the databases so they are not immediately recreated on the next update.
+- Age-based cleanup now distinguishes normal old-article deletion from explicit mark-as-read deletion.
+- Feed updates now run pre-update cleanup through a shared database flow.
+- Article saving now renders frontmatter from structured properties when enabled, with better YAML formatting for known Obsidian property types.
+- YouTube articles no longer duplicate the hero thumbnail when the content already includes the video embed.
+- Feed parsing and database migration now use stricter type checks, better corrupted-line handling, and quieter debug logging.
+- Update stopping now waits for the current async operation to settle and shows a clearer status message.
 
 ## Technical updates
-- Prepared release automation for GitHub pre-releases.
-- Updated plugin metadata and version mappings for `0.0.6`.
+- Updated `defuddle` from `0.18.1` to `0.19.1`.
+- Updated `esbuild` from `0.25.5` to `0.28.1`.
+- Fixed the version bump script so new plugin versions are always written to `versions.json`.
+- Prepared release automation for GitHub pre-releases and updated plugin metadata to `0.0.6`.
+- Reworked several settings modules to reduce unsafe `any` usage, use Obsidian CSS helpers more consistently, and improve async error handling.
 
 # Changelog - v0.0.5 (Pre-release)
 
