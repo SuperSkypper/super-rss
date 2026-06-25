@@ -44,4 +44,4 @@ jobs:
             versions.json
             LICENSE
             README.md
-          prerelease: true
+          prerelease: false
