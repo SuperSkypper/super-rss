@@ -1,13 +1,40 @@
-import { App, PluginSettingTab, Setting, Notice, setIcon, normalizePath } from 'obsidian';
-import RssPlugin, { resolveFeedPath } from './main';
+import { App, PluginSettingTab, Setting, Notice, setIcon } from 'obsidian';
+import RssPlugin from './main';
 import { renderGeneralTab }        from './settings/settingsGeneral';
 import { renderGlobalTemplateTab } from './settings/settingsTemplate';
 import { renderMyFeedsTab }        from './settings/settingsFeeds';
 import { renderOpmlTab }           from './settings/settingsOPML';
 import { AddUrlModal }             from './settings/feedAdd';
 import { addFeed }                 from './settings/feedAdd';
-import { runAutoCleanup, FileMeta, resolveLinkFromFile, readPubDateFromFrontmatter } from './settings/feedDelete';
+import { runCleanupAndDedup }      from './settings/feedCleanup';
 import { tagDuplicatesInVault }    from './settings/feedDuplicate';
+
+interface ObsidianPluginManager {
+    disablePlugin: (pluginId: string) => Promise<void>;
+    enablePlugin: (pluginId: string) => Promise<void>;
+}
+
+interface ObsidianSettingManager {
+    openTabById: (pluginId: string) => Promise<void>;
+}
+
+interface AppWithPluginReload extends App {
+    plugins: ObsidianPluginManager;
+    setting: ObsidianSettingManager;
+}
+
+function applyCssText(element: HTMLElement, cssText: string): void {
+    const properties: Record<string, string> = {};
+    for (const declaration of cssText.split(';')) {
+        const separator = declaration.indexOf(':');
+        if (separator < 0) continue;
+        const property = declaration.slice(0, separator).trim();
+        const value = declaration.slice(separator + 1).trim();
+        if (property && value) properties[property] = value;
+    }
+    element.setCssProps(properties);
+}
+
 
 export class RssSettingTab extends PluginSettingTab {
     plugin: RssPlugin;
@@ -24,7 +51,7 @@ export class RssSettingTab extends PluginSettingTab {
 
     private applyCardStyle(setting: Setting) {
         const { settingEl } = setting;
-        settingEl.style.cssText = `
+        applyCssText(settingEl, `
             background: var(--background-secondary);
             border: 1px solid var(--background-modifier-border);
             border-radius: 10px;
@@ -35,67 +62,15 @@ export class RssSettingTab extends PluginSettingTab {
             align-items: center;
             position: relative;
             overflow: visible;
-        `;
+        `);
         settingEl.classList.add('rss-card-setting');
-        settingEl.onmouseenter = () => { settingEl.style.borderColor = 'var(--interactive-accent)'; };
-        settingEl.onmouseleave = () => { settingEl.style.borderColor = 'var(--background-modifier-border)'; };
+        settingEl.onmouseenter = () => { settingEl.setCssProps({ 'border-color': 'var(--interactive-accent)' }); };
+        settingEl.onmouseleave = () => { settingEl.setCssProps({ 'border-color': 'var(--background-modifier-border)' }); };
     }
 
     private autoResize(el: HTMLTextAreaElement) {
-        el.style.height = 'auto';
-        el.style.height = el.scrollHeight + 'px';
-    }
-
-    // ── Standalone cleanup runner ─────────────────────────────────────────────
-
-    private async runCleanupAndDedup(): Promise<void> {
-        const enabledFeeds = this.plugin.settings.feeds.filter(
-            f => f.enabled && f.url && !f.deleted
-        );
-
-        if (enabledFeeds.length === 0) {
-            new Notice('No active feeds to clean up.');
-            return;
-        }
-
-        this.plugin.setStatusBarText('⏳ Cleaning Articles...');
-
-        try {
-            const { loadAutoDatabase } = await import('./settings/feedDatabase');
-            const db = await loadAutoDatabase(this.app);
-            let totalDeleted = 0;
-
-            const rssFolderPath = normalizePath(this.plugin.settings.folderPath);
-            const allMdFiles = this.app.vault.getMarkdownFiles().filter(f => f.path.startsWith(rssFolderPath + '/'));
-            const totalFiles = allMdFiles.length;
-            const fileCache: FileMeta[] = [];
-
-            for (let i = 0; i < totalFiles; i++) {
-                const f = allMdFiles[i]!;
-                this.plugin.setStatusBarText(`⏳ Saving: ${i + 1}/${totalFiles}`, `Processing ${f.path}`);
-                const link = await resolveLinkFromFile(this.app, this.app.vault, f);
-                const pubDate = await readPubDateFromFrontmatter(this.app, this.app.vault, f);
-                fileCache.push({ file: f, link, pubDate, deleted: false });
-            }
-
-            totalDeleted += await runAutoCleanup(this.app, this.plugin, db, fileCache);
-
-
-            try {
-                this.plugin.setStatusBarText('⏳ Checking Duplicates...');
-                totalDeleted += await tagDuplicatesInVault(this.app, this.plugin, fileCache);
-            } catch (e) {
-                console.error('RSS: tagDuplicatesInVault failed:', e);
-            }
-
-            if (totalDeleted === 0) {
-                new Notice('No old or duplicate articles to delete.', 4000);
-            } else {
-                new Notice(`${totalDeleted} article${totalDeleted !== 1 ? 's' : ''} deleted.`, 4000);
-            }
-        } finally {
-            this.plugin.clearStatusBar();
-        }
+        el.setCssProps({ 'height': 'auto' });
+        el.setCssProps({ 'height': el.scrollHeight + 'px' });
     }
 
     private renderActiveTab(
@@ -124,16 +99,16 @@ export class RssSettingTab extends PluginSettingTab {
     display(): void {
         const { containerEl } = this;
         containerEl.empty();
-        containerEl.createEl('h2', { text: 'Super RSS Settings' });
+        ;
 
         const tabHeader = containerEl.createDiv();
-        tabHeader.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 30px; flex-wrap: wrap;';
+        applyCssText(tabHeader, 'display: flex; align-items: center; gap: 8px; margin-bottom: 30px; flex-wrap: wrap;');
 
         let refresh: () => void;
 
         // ── Add Feed button ───────────────────────────────────────────────────
         const addFeedBtn = tabHeader.createEl('button');
-        addFeedBtn.style.cssText = `
+        applyCssText(addFeedBtn, `
             display: flex; align-items: center; gap: 5px;
             padding: 6px 12px;
             ${this.isTouchDevice() ? 'min-height: 44px; min-width: 44px;' : ''}
@@ -141,9 +116,9 @@ export class RssSettingTab extends PluginSettingTab {
             font-size: 0.9em; border: none;
             background: var(--color-red); color: white;
             transition: opacity 0.15s ease;
-        `;
+        `);
         const addIcon = addFeedBtn.createDiv();
-        addIcon.style.cssText = 'display: flex; align-items: center; width: 14px; height: 14px;';
+        applyCssText(addIcon, 'display: flex; align-items: center; width: 14px; height: 14px;');
         setIcon(addIcon, 'plus');
         addFeedBtn.createSpan({ text: 'Add Feed' });
         addFeedBtn.onclick = () => {
@@ -154,8 +129,8 @@ export class RssSettingTab extends PluginSettingTab {
 
         // ── Update Feeds button ───────────────────────────────────────────────
         const updateBtn = tabHeader.createEl('button');
-        updateBtn.title = 'Update Feeds';
-        updateBtn.style.cssText = `
+        updateBtn.title = 'Update feeds';
+        applyCssText(updateBtn, `
             display: flex; align-items: center; justify-content: center;
             width: 30px; height: 30px;
             ${this.isTouchDevice() ? 'min-width: 44px; min-height: 44px;' : ''}
@@ -163,9 +138,9 @@ export class RssSettingTab extends PluginSettingTab {
             border: 1px solid var(--background-modifier-border);
             background: var(--background-secondary-alt); color: var(--text-muted);
             transition: all 0.15s ease;
-        `;
+        `);
         const updateIcon = updateBtn.createDiv();
-        updateIcon.style.cssText = 'display: flex; align-items: center; width: 16px; height: 16px;';
+        applyCssText(updateIcon, 'display: flex; align-items: center; width: 16px; height: 16px;');
         setIcon(updateIcon, 'refresh-cw');
         updateBtn.onclick = () => {
             void (async () => {
@@ -180,7 +155,7 @@ export class RssSettingTab extends PluginSettingTab {
         // ── Stop button ───────────────────────────────────────────────────────
         const stopBtn = tabHeader.createEl('button');
         stopBtn.title = 'Stop updating';
-        stopBtn.style.cssText = `
+        applyCssText(stopBtn, `
             display: flex; align-items: center; justify-content: center;
             width: 30px; height: 30px;
             ${this.isTouchDevice() ? 'min-width: 44px; min-height: 44px;' : ''}
@@ -188,18 +163,18 @@ export class RssSettingTab extends PluginSettingTab {
             border: 1px solid var(--background-modifier-border);
             background: var(--background-secondary-alt); color: var(--text-muted);
             transition: all 0.15s ease;
-        `;
+        `);
         const stopIcon = stopBtn.createDiv();
-        stopIcon.style.cssText = 'display: flex; align-items: center; width: 16px; height: 16px;';
+        applyCssText(stopIcon, 'display: flex; align-items: center; width: 16px; height: 16px;');
         setIcon(stopIcon, 'square');
-        stopBtn.addEventListener('mouseenter', () => { stopBtn.style.color = 'var(--color-red)'; stopBtn.style.borderColor = 'var(--color-red)'; });
-        stopBtn.addEventListener('mouseleave', () => { stopBtn.style.color = 'var(--text-muted)'; stopBtn.style.borderColor = 'var(--background-modifier-border)'; });
+        stopBtn.addEventListener('mouseenter', () => { stopBtn.setCssProps({ 'color': 'var(--color-red)' }); stopBtn.setCssProps({ 'border-color': 'var(--color-red)' }); });
+        stopBtn.addEventListener('mouseleave', () => { stopBtn.setCssProps({ 'color': 'var(--text-muted)' }); stopBtn.setCssProps({ 'border-color': 'var(--background-modifier-border)' }); });
         stopBtn.onclick = () => { void this.plugin.stopUpdate(); };
 
         // ── Cleanup button ────────────────────────────────────────────────────
         const cleanupBtn = tabHeader.createEl('button');
         cleanupBtn.title = 'Delete old articles now';
-        cleanupBtn.style.cssText = `
+        applyCssText(cleanupBtn, `
             display: flex; align-items: center; justify-content: center;
             width: 30px; height: 30px;
             ${this.isTouchDevice() ? 'min-width: 44px; min-height: 44px;' : ''}
@@ -207,49 +182,49 @@ export class RssSettingTab extends PluginSettingTab {
             border: 1px solid var(--background-modifier-border);
             background: var(--background-secondary-alt); color: var(--text-muted);
             transition: all 0.15s ease;
-        `;
+        `);
         const cleanupIcon = cleanupBtn.createDiv();
-        cleanupIcon.style.cssText = 'display: flex; align-items: center; width: 16px; height: 16px;';
+        applyCssText(cleanupIcon, 'display: flex; align-items: center; width: 16px; height: 16px;');
         setIcon(cleanupIcon, 'trash');
-        cleanupBtn.addEventListener('mouseenter', () => { cleanupBtn.style.color = 'var(--color-red)'; cleanupBtn.style.borderColor = 'var(--color-red)'; });
-        cleanupBtn.addEventListener('mouseleave', () => { cleanupBtn.style.color = 'var(--text-muted)'; cleanupBtn.style.borderColor = 'var(--background-modifier-border)'; });
+        cleanupBtn.addEventListener('mouseenter', () => { cleanupBtn.setCssProps({ 'color': 'var(--color-red)' }); cleanupBtn.setCssProps({ 'border-color': 'var(--color-red)' }); });
+        cleanupBtn.addEventListener('mouseleave', () => { cleanupBtn.setCssProps({ 'color': 'var(--text-muted)' }); cleanupBtn.setCssProps({ 'border-color': 'var(--background-modifier-border)' }); });
         cleanupBtn.onclick = () => {
             void (async () => {
             new Notice('Running cleanup...', 3000);
-            await this.runCleanupAndDedup();
+            await runCleanupAndDedup(this.app, this.plugin);
             })();
         };
 
         // ── Separator ─────────────────────────────────────────────────────────
-        tabHeader.createDiv().style.cssText = 'width: 1px; height: 24px; background: var(--background-modifier-border); margin: 0 4px;';
+        applyCssText(tabHeader.createDiv(), 'width: 1px; height: 24px; background: var(--background-modifier-border); margin: 0 4px;');
 
         // ── Tab buttons ───────────────────────────────────────────────────────
         const tabBtns = new Map<string, HTMLButtonElement>();
 
         const createTabBtn = (id: 'general' | 'template' | 'feeds' | 'opml', label: string) => {
             const btn = tabHeader.createEl('button', { text: label });
-            btn.style.cssText = `padding: 6px 16px; ${this.isTouchDevice() ? 'min-height: 44px;' : ''} border-radius: 6px; cursor: pointer; font-size: 0.9em; border: 1px solid var(--background-modifier-border); transition: all 0.2s ease;`;
+            applyCssText(btn, `padding: 6px 16px; ${this.isTouchDevice() ? 'min-height: 44px;' : ''} border-radius: 6px; cursor: pointer; font-size: 0.9em; border: 1px solid var(--background-modifier-border); transition: all 0.2s ease;`);
             if (this.activeTab === id) {
-                btn.style.backgroundColor = 'var(--interactive-accent)';
-                btn.style.color           = 'var(--text-on-accent)';
-                btn.style.borderColor     = 'var(--interactive-accent)';
+                btn.setCssProps({ 'background-color': 'var(--interactive-accent)' });
+                btn.setCssProps({ 'color': 'var(--text-on-accent)' });
+                btn.setCssProps({ 'border-color': 'var(--interactive-accent)' });
             } else {
-                btn.style.backgroundColor = 'var(--background-secondary-alt)';
-                btn.style.color           = 'var(--text-muted)';
-                btn.style.borderColor     = 'var(--background-modifier-border)';
+                btn.setCssProps({ 'background-color': 'var(--background-secondary-alt)' });
+                btn.setCssProps({ 'color': 'var(--text-muted)' });
+                btn.setCssProps({ 'border-color': 'var(--background-modifier-border)' });
             }
             btn.onclick = () => {
                 if (this.activeTab === id) return;
                 this.activeTab = id;
                 tabBtns.forEach((b, bid) => {
                     if (bid === id) {
-                        b.style.backgroundColor = 'var(--interactive-accent)';
-                        b.style.color           = 'var(--text-on-accent)';
-                        b.style.borderColor     = 'var(--interactive-accent)';
+                        b.setCssProps({ 'background-color': 'var(--interactive-accent)' });
+                        b.setCssProps({ 'color': 'var(--text-on-accent)' });
+                        b.setCssProps({ 'border-color': 'var(--interactive-accent)' });
                     } else {
-                        b.style.backgroundColor = 'var(--background-secondary-alt)';
-                        b.style.color           = 'var(--text-muted)';
-                        b.style.borderColor     = 'var(--background-modifier-border)';
+                        b.setCssProps({ 'background-color': 'var(--background-secondary-alt)' });
+                        b.setCssProps({ 'color': 'var(--text-muted)' });
+                        b.setCssProps({ 'border-color': 'var(--background-modifier-border)' });
                     }
                 });
                 refresh();
@@ -258,17 +233,17 @@ export class RssSettingTab extends PluginSettingTab {
         };
 
         createTabBtn('general',  'General');
-        createTabBtn('template', 'Global Template');
-        createTabBtn('feeds',    'My Feeds');
-        createTabBtn('opml',     'OPML');
+        createTabBtn('template', 'Template');
+        createTabBtn('feeds',    'Feeds');
+        createTabBtn('opml',     'Import/export');
 
         // ── Reload Plugin button (dev mode only) ──────────────────────────────
         if (this.plugin.settings.devMode) {
-            tabHeader.createDiv().style.cssText = 'width: 1px; height: 24px; background: var(--background-modifier-border); margin: 0 4px;';
+            applyCssText(tabHeader.createDiv(), 'width: 1px; height: 24px; background: var(--background-modifier-border); margin: 0 4px;');
 
             const reloadBtn = tabHeader.createEl('button');
-            reloadBtn.title = 'Reload Plugin';
-            reloadBtn.style.cssText = `
+            reloadBtn.title = 'Reload plugin';
+            applyCssText(reloadBtn, `
                 display: flex; align-items: center; justify-content: center;
                 width: 30px; height: 30px;
                 ${this.isTouchDevice() ? 'min-width: 44px; min-height: 44px;' : ''}
@@ -276,24 +251,25 @@ export class RssSettingTab extends PluginSettingTab {
                 border: 1px solid var(--background-modifier-border);
                 background: var(--background-secondary-alt); color: var(--text-muted);
                 transition: all 0.15s ease;
-            `;
+            `);
             const reloadIcon = reloadBtn.createDiv();
-            reloadIcon.style.cssText = 'display: flex; align-items: center; width: 16px; height: 16px;';
+            applyCssText(reloadIcon, 'display: flex; align-items: center; width: 16px; height: 16px;');
             setIcon(reloadIcon, 'rotate-ccw');
             reloadBtn.onclick = () => {
                 void (async () => {
                 await this.plugin.saveSettings();
                 const pluginId = this.plugin.manifest.id;
-                await (this.app as any).plugins.disablePlugin(pluginId);
-                await (this.app as any).plugins.enablePlugin(pluginId);
-                await (this.app as any).setting.openTabById(pluginId);
+                const appWithReload = this.app as AppWithPluginReload;
+                await appWithReload.plugins.disablePlugin(pluginId);
+                await appWithReload.plugins.enablePlugin(pluginId);
+                await appWithReload.setting.openTabById(pluginId);
                 })();
             };
 
             // ── Tag Duplicates button (dev mode only) ─────────────────────────
             const tagDupBtn = tabHeader.createEl('button');
             tagDupBtn.title = 'Tag duplicate articles';
-            tagDupBtn.style.cssText = `
+            applyCssText(tagDupBtn, `
                 display: flex; align-items: center; justify-content: center;
                 width: 30px; height: 30px;
                 ${this.isTouchDevice() ? 'min-width: 44px; min-height: 44px;' : ''}
@@ -301,12 +277,12 @@ export class RssSettingTab extends PluginSettingTab {
                 border: 1px solid var(--background-modifier-border);
                 background: var(--background-secondary-alt); color: var(--text-muted);
                 transition: all 0.15s ease;
-            `;
+            `);
             const tagDupIcon = tagDupBtn.createDiv();
-            tagDupIcon.style.cssText = 'display: flex; align-items: center; width: 16px; height: 16px;';
+            applyCssText(tagDupIcon, 'display: flex; align-items: center; width: 16px; height: 16px;');
             setIcon(tagDupIcon, 'copy');
-            tagDupBtn.addEventListener('mouseenter', () => { tagDupBtn.style.color = 'var(--interactive-accent)'; tagDupBtn.style.borderColor = 'var(--interactive-accent)'; });
-            tagDupBtn.addEventListener('mouseleave', () => { tagDupBtn.style.color = 'var(--text-muted)'; tagDupBtn.style.borderColor = 'var(--background-modifier-border)'; });
+            tagDupBtn.addEventListener('mouseenter', () => { tagDupBtn.setCssProps({ 'color': 'var(--interactive-accent)' }); tagDupBtn.setCssProps({ 'border-color': 'var(--interactive-accent)' }); });
+            tagDupBtn.addEventListener('mouseleave', () => { tagDupBtn.setCssProps({ 'color': 'var(--text-muted)' }); tagDupBtn.setCssProps({ 'border-color': 'var(--background-modifier-border)' }); });
             tagDupBtn.onclick = () => {
                 void (async () => {
                 tagDupBtn.disabled = true;

@@ -5,7 +5,6 @@ import {
     loadUserDatabase, 
     loadFeedDatabase, 
     AutoDatabase, 
-    UserDatabase,
     registerOldArticle 
 } from './feedDatabase';
 
@@ -14,6 +13,14 @@ export interface FileMeta {
     link: string | null;
     pubDate: number | null;
     deleted: boolean;
+}
+
+interface VaultWithConfig extends Vault {
+    getConfig?: (key: string) => unknown;
+}
+
+function isStringArray(value: unknown): value is string[] {
+    return Array.isArray(value) && value.every(item => typeof item === 'string');
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -104,14 +111,15 @@ export function isFileProtected(app: App, file: TFile, propertyName: string): bo
     const foundKey = Object.keys(fm).find(k => k.toLowerCase() === propertyName.toLowerCase());
     if (!foundKey) return true;
 
-    const val = fm[foundKey];
+    const frontmatter = fm as Record<string, unknown>;
+    const val = frontmatter[foundKey];
     // Property is 'protected' (locked) IF it is NOT explicitly true.
     // This allows undefined/false to act as protected.
     return val !== true && String(val).toLowerCase() !== 'true';
 }
 
 function getObsidianTrashUsesSystem(app: App): boolean {
-    const getConfig = (app.vault as any).getConfig?.bind(app.vault);
+    const getConfig = (app.vault as VaultWithConfig).getConfig?.bind(app.vault);
     return getConfig?.('trashOption') !== 'local';
 }
 
@@ -161,8 +169,6 @@ export async function cleanupOldFiles(
                       || settings?.markAsReadCheckboxProperty?.trim()
                       || 'Checkbox';
 
-    const markAsReadMode = settings?.markAsReadEnabled ?? false;
-
     // Load fresh databases
     const [diskAutoDb, userDb] = await Promise.all([
         loadAutoDatabase(app),
@@ -211,7 +217,7 @@ export async function cleanupOldFiles(
                     userDb,
                     meta.link,
                     mergedAutoDb[meta.link]?.pubDate ?? String(meta.file.stat.ctime),
-                    markAsReadMode,
+                    false, // Deleted by age, not explicitly marked as read
                     meta.file.basename,
                 );
 
@@ -257,7 +263,7 @@ export async function cleanupOldFiles(
                 userDb,
                 itemLink,
                 mergedAutoDb[itemLink]?.pubDate ?? String(file.stat.ctime),
-                markAsReadMode,
+                false, // Deleted by age, not explicitly marked as read
                 file.basename,
             );
 
@@ -294,7 +300,9 @@ export async function deleteLiveArticlesForFeed(
         const cache = metadataCache.getFileCache(file);
         const tags = [
             ...(cache?.tags?.map(t => t.tag) ?? []),
-            ...(cache?.frontmatter?.tags ?? []),
+            ...(isStringArray((cache?.frontmatter as Record<string, unknown> | undefined)?.tags)
+                ? (cache?.frontmatter as Record<string, unknown>).tags as string[]
+                : []),
         ].map((t: string) => t.replace(/^#/, '').toLowerCase());
 
         if (!tags.includes('live')) continue;
@@ -351,7 +359,7 @@ export async function deleteOrphanedDbArticles(
                 await discardVaultFile(app, meta.file, settings);
                 meta.deleted = true;
                 deletedCount++;
-                console.log(`RSS Cleanup (orphan): deleted "${meta.file.path}" (status: ${entry.status})`);
+                console.debug(`RSS Cleanup (orphan): deleted "${meta.file.path}" (status: ${entry.status})`);
             } catch (e) {
                 console.error(`RSS Cleanup (orphan): failed to delete "${meta.file.path}"`, e);
             }
@@ -361,8 +369,6 @@ export async function deleteOrphanedDbArticles(
         const files = vault.getFiles().filter(f =>
             f.path.startsWith(normalizedFolder + '/') && f.extension === 'md'
         );
-
-    let deletedCount = 0;
 
     for (const file of files) {
         const itemLink = await resolveLinkFromFile(app, vault, file);
@@ -374,7 +380,7 @@ export async function deleteOrphanedDbArticles(
         try {
             await discardVaultFile(app, file, settings);
             deletedCount++;
-            console.log(`RSS Cleanup (orphan): deleted "${file.path}" (status: ${entry.status})`);
+            console.debug(`RSS Cleanup (orphan): deleted "${file.path}" (status: ${entry.status})`);
         } catch (e) {
             console.error(`RSS Cleanup (orphan): failed to delete "${file.path}"`, e);
         }

@@ -1,6 +1,18 @@
 import { App, Notice, Setting, Modal } from 'obsidian';
 import RssPlugin, { FeedConfig, FeedGroup } from '../main';
 
+function applyCssText(element: HTMLElement, cssText: string): void {
+    const properties: Record<string, string> = {};
+    for (const declaration of cssText.split(';')) {
+        const separator = declaration.indexOf(':');
+        if (separator < 0) continue;
+        const property = declaration.slice(0, separator).trim();
+        const value = declaration.slice(separator + 1).trim();
+        if (property && value) properties[property] = value;
+    }
+    element.setCssProps(properties);
+}
+
 // ─── Export ───────────────────────────────────────────────────────────────────
 
 function buildOpmlXml(plugin: RssPlugin): string {
@@ -197,13 +209,13 @@ function showImportModal(
 
             this.rebuildCategoryMap();
 
-            this.modalEl.style.width    = 'min(720px, 95vw)';
-            this.modalEl.style.maxWidth = '95vw';
+            this.modalEl.setCssProps({ 'width': 'min(720px, 95vw)' });
+            this.modalEl.setCssProps({ 'max-width': '95vw' });
 
-            contentEl.createEl('h2', { text: 'Import OPML — Select Feeds' });
+            contentEl.createEl('h2', { text: 'Import feeds' });
 
             const summary = contentEl.createDiv();
-            summary.style.cssText = 'margin-bottom: 12px; color: var(--text-muted); font-size: 0.9em;';
+            applyCssText(summary, 'margin-bottom: 12px; color: var(--text-muted); font-size: 0.9em;');
             const updateSummary = () => {
                 const total    = this.feeds.length;
                 const dupes    = this.feeds.filter(f => f.isDupe).length;
@@ -212,11 +224,12 @@ function showImportModal(
             };
 
             const selectAllRow = contentEl.createDiv();
-            selectAllRow.style.cssText = 'display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding: 8px 12px; background: var(--background-secondary); border-radius: 8px;';
+            applyCssText(selectAllRow, 'display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding: 8px 12px; background: var(--background-secondary); border-radius: 8px;');
 
             const selectAllCheckbox = selectAllRow.createEl('input', { type: 'checkbox' });
             selectAllCheckbox.checked = true;
-            selectAllRow.createEl('span', { text: 'Select / deselect all' }).style.cssText = 'font-weight: 600;';
+            const selectAllLabel = selectAllRow.createEl('span', { text: 'Select or deselect all' });
+            applyCssText(selectAllLabel, 'font-weight: 600;');
 
             selectAllCheckbox.onchange = () => {
                 const checked = selectAllCheckbox.checked;
@@ -228,41 +241,41 @@ function showImportModal(
             };
 
             const listContainer = contentEl.createDiv();
-            listContainer.style.cssText = 'max-height: min(420px, 60vh); overflow-y: auto; display: flex; flex-direction: column; gap: 6px;';
+            applyCssText(listContainer, 'max-height: min(420px, 60vh); overflow-y: auto; display: flex; flex-direction: column; gap: 6px;');
 
             this.categoryMap.forEach((catFeeds, catKey) => {
                 if (catKey !== '__loose__') {
                     const catHeader = listContainer.createDiv();
-                    catHeader.style.cssText = 'display: flex; align-items: center; gap: 6px; margin-top: 10px; margin-bottom: 2px; color: var(--text-accent); font-size: 0.85em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;';
+                    applyCssText(catHeader, 'display: flex; align-items: center; gap: 6px; margin-top: 10px; margin-bottom: 2px; color: var(--text-accent); font-size: 0.85em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;');
                     catHeader.createEl('span', { text: `📁 ${catKey}` });
                 }
 
                 catFeeds.forEach(feed => {
                     const row = listContainer.createDiv();
-                    row.style.cssText = `
+                    applyCssText(row, `
                         display: flex; align-items: center; gap: 10px;
                         padding: 8px 12px; border-radius: 8px;
                         background: var(--background-secondary);
                         border: 1px solid var(--background-modifier-border);
                         opacity: ${feed.isDupe ? '0.45' : '1'};
-                    `;
+                    `);
 
                     const checkbox = row.createEl('input', { type: 'checkbox' });
                     checkbox.checked  = feed.selected && !feed.isDupe;
                     checkbox.disabled = feed.isDupe;
 
                     const info = row.createDiv();
-                    info.style.cssText = 'flex: 1; min-width: 0;';
+                    applyCssText(info, 'flex: 1; min-width: 0;');
 
                     const nameEl = info.createEl('div', { text: feed.name });
-                    nameEl.style.cssText = 'font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;';
+                    applyCssText(nameEl, 'font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;');
 
                     const urlEl = info.createEl('div', { text: feed.url });
-                    urlEl.style.cssText = 'font-size: 0.8em; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-monospace);';
+                    applyCssText(urlEl, 'font-size: 0.8em; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-monospace);');
 
                     if (feed.isDupe) {
                         const dupeTag = row.createEl('span', { text: 'Already exists' });
-                        dupeTag.style.cssText = 'font-size: 0.75em; color: var(--text-muted); background: var(--background-modifier-border); padding: 2px 6px; border-radius: 4px; flex-shrink: 0;';
+                        applyCssText(dupeTag, 'font-size: 0.75em; color: var(--text-muted); background: var(--background-modifier-border); padding: 2px 6px; border-radius: 4px; flex-shrink: 0;');
                     }
 
                     checkbox.onchange = () => {
@@ -277,12 +290,12 @@ function showImportModal(
             updateSummary();
 
             const footer = contentEl.createDiv();
-            footer.style.cssText = 'display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 20px;';
+            applyCssText(footer, 'display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 20px;');
 
             const cancelBtn = footer.createEl('button', { text: 'Cancel' });
             cancelBtn.onclick = () => this.close();
 
-            const importBtn = footer.createEl('button', { text: 'Import Selected', cls: 'mod-cta' });
+            const importBtn = footer.createEl('button', { text: 'Import selected', cls: 'mod-cta' });
             importBtn.onclick = () => {
                 void (async () => {
                     const { imported, skipped } = await importFeeds(plugin, this.feeds);
@@ -320,11 +333,11 @@ export function renderOpmlTab(
     onRefresh: () => void
 ): void {
     // ── About OPML ────────────────────────────────────────────────────────────
-    const aboutHeader = containerEl.createEl('h4', { text: 'About OPML' });
-    aboutHeader.style.cssText = SECTION_HEADER_CSS;
+    const aboutHeader = containerEl.createEl('h4', { text: 'Feed list files' });
+    applyCssText(aboutHeader, SECTION_HEADER_CSS);
 
     const infoBox = containerEl.createDiv();
-    infoBox.style.cssText = `
+    applyCssText(infoBox, `
         padding: 12px 16px;
         background: var(--background-secondary);
         border: 1px solid var(--background-modifier-border);
@@ -333,19 +346,20 @@ export function renderOpmlTab(
         color: var(--text-muted);
         line-height: 1.6;
         margin-bottom: 4px;
-    `;
-    infoBox.createEl('div', { text: 'OPML (Outline Processor Markup Language) is the standard format for sharing RSS feed lists between readers.' });
-    infoBox.createEl('div', { text: 'On export: folders become OPML categories. On import: OPML categories become folders.' }).style.marginTop = '4px';
+    `);
+    infoBox.createEl('div', { text: 'Use this file format to share feed lists between readers.' });
+    const folderInfo = infoBox.createEl('div', { text: 'On export, folders become categories. On import, categories become folders.' });
+    folderInfo.setCssProps({ 'margin-top': '4px' });
 
     // ── Import ────────────────────────────────────────────────────────────────
     const importHeader = containerEl.createEl('h4', { text: 'Import' });
-    importHeader.style.cssText = SECTION_HEADER_CSS;
+    applyCssText(importHeader, SECTION_HEADER_CSS);
 
     const importSetting = new Setting(containerEl)
-        .setName('Import OPML')
-        .setDesc('Select an OPML file to import feeds. You can review and select which feeds to import before confirming.')
+        .setName('Import feeds')
+        .setDesc('Select a file to import feeds. You can review and select which feeds to import before confirming.')
         .addButton(btn => btn
-            .setButtonText('Import OPML')
+            .setButtonText('Import feeds')
             .onClick(() => {
                 const input = document.createElement('input');
                 input.type   = 'file';
@@ -369,7 +383,7 @@ export function renderOpmlTab(
 
                         const parsedFeeds = parseOpml(xml);
                         if (parsedFeeds.length === 0) {
-                            new Notice('No feeds found in this OPML file.');
+                            new Notice('No feeds found in this file.');
                             return;
                         }
 
@@ -396,13 +410,13 @@ export function renderOpmlTab(
 
     // ── Export ────────────────────────────────────────────────────────────────
     const exportHeader = containerEl.createEl('h4', { text: 'Export' });
-    exportHeader.style.cssText = SECTION_HEADER_CSS;
+    applyCssText(exportHeader, SECTION_HEADER_CSS);
 
     const exportSetting = new Setting(containerEl)
-        .setName('Export OPML')
-        .setDesc('Download all active feeds as an OPML file. Folders become OPML categories.')
+        .setName('Export feeds')
+        .setDesc('Download all active feeds as a file. Folders become categories.')
         .addButton(btn => btn
-            .setButtonText('Export OPML')
+            .setButtonText('Export feeds')
             .onClick(() => {
                 const activeFeeds = plugin.settings.feeds.filter(f => !(f.deleted ?? false) && !(f.archived ?? false));
                 if (activeFeeds.length === 0) {

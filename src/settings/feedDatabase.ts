@@ -23,6 +23,7 @@ export interface UserDatabase {
 }
 
 export type FeedDatabase = Record<string, ArticleEntry>;
+type JsonRecord = Record<string, unknown>;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -96,6 +97,42 @@ function makeEntry(
     return { ts: ts ?? String(Date.now()), pubDate: normalizePubDate(pubDate), status, link, title };
 }
 
+function isRecord(value: unknown): value is JsonRecord {
+    return typeof value === 'object' && value !== null;
+}
+
+function isArticleStatus(value: unknown): value is ArticleStatus {
+    return value === 'skip_shorts'
+        || value === 'skip_live'
+        || value === 'old_article'
+        || value === 'mark_as_read';
+}
+
+function asString(value: unknown): string {
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number') return String(value);
+    return '';
+}
+
+function parseJsonRecord(line: string): JsonRecord | null {
+    const parsed: unknown = JSON.parse(line);
+    return isRecord(parsed) ? parsed : null;
+}
+
+function recordToEntry(record: JsonRecord): ArticleEntry | null {
+    const link = asString(record.link);
+    const status = record.status;
+    if (!link || !isArticleStatus(status)) return null;
+
+    return makeEntry(
+        link,
+        asString(record.pubDate),
+        status,
+        asString(record.title),
+        asString(record.ts) || undefined,
+    );
+}
+
 function sameEntry(a: ArticleEntry | undefined, b: ArticleEntry | undefined): boolean {
     if (!a || !b) return false;
     return a.link === b.link && a.pubDate === b.pubDate && a.status === b.status;
@@ -128,23 +165,28 @@ export async function migrateAndPurgeDatabase(app: App): Promise<void> {
         if (/"ts":\s*\d/.test(l))       return true;  // ts is a number
         if (!l.includes('"title"'))     return true;  // missing title field
         try {
-            const e = JSON.parse(l) as any;
-            if (!e.pubDate || !/^\d+$/.test(e.pubDate)) return true; // non-numeric pubDate
-            if (!e.ts     || !/^\d+$/.test(e.ts))       return true; // non-numeric ts
+            const e = parseJsonRecord(l);
+            if (!e) return true;
+            const pubDate = asString(e.pubDate);
+            const ts = asString(e.ts);
+            if (!pubDate || !/^\d+$/.test(pubDate)) return true; // non-numeric pubDate
+            if (!ts      || !/^\d+$/.test(ts))      return true; // non-numeric ts
         } catch { return true; }
         return false;
     });
     if (!needsMigration) return;
 
-    console.log('RSS: Migrating database to new format...');
+    console.debug('RSS: Migrating database to new format...');
 
     // Latest entry for each link wins (JSONL is append-only, last = most recent)
-    const latestMap = new Map<string, any>();
+    const latestMap = new Map<string, JsonRecord>();
     for (const line of lines) {
         try {
-            const entry = JSON.parse(line) as any;
-            if (!entry.link || entry.status === 'cleared') continue;
-            latestMap.set(entry.link, entry);
+            const entry = parseJsonRecord(line);
+            if (!entry) continue;
+            const link = asString(entry.link);
+            if (!link || entry.status === 'cleared') continue;
+            latestMap.set(link, entry);
         } catch {
             console.warn('RSS Migration: skipping corrupted line.');
         }
@@ -152,17 +194,16 @@ export async function migrateAndPurgeDatabase(app: App): Promise<void> {
 
     const migrated: string[] = [];
     for (const [link, entry] of latestMap) {
-        const rawTs = typeof entry.ts === 'number'
-            ? String(entry.ts).padStart(13, '0')
-            : (entry.ts || '0000000000000');
+        const rawTs = asString(entry.ts) || '0000000000000';
+        const status = isArticleStatus(entry.status) ? entry.status : 'old_article';
 
         // makeEntry calls normalizePubDate internally, handling any date format
         const normalized = makeEntry(
             link,
-            entry.pubDate ?? '',  // normalizePubDate will handle conversion
-            entry.status,
-            entry.title  || '',
-            rawTs,
+            asString(entry.pubDate),  // normalizePubDate will handle conversion
+            status,
+            asString(entry.title),
+            rawTs.padStart(13, '0'),
         );
         migrated.push(JSON.stringify(normalized));
     }
@@ -172,7 +213,7 @@ export async function migrateAndPurgeDatabase(app: App): Promise<void> {
         path,
         migrated.join('\n') + (migrated.length > 0 ? '\n' : ''),
     );
-    console.log(`RSS: Migration complete — ${migrated.length} entries retained.`);
+    console.debug(`RSS: Migration complete — ${migrated.length} entries retained.`);
 }
 
 // ─── Dev utilities ───────────────────────────────────────────────────────────
@@ -191,11 +232,12 @@ export async function purgeEntriesByStatus(app: App, status: ArticleStatus): Pro
     let removed = 0;
 
     // Deduplicate (last entry wins) then filter
-    const latestMap = new Map<string, any>();
+    const latestMap = new Map<string, ArticleEntry>();
     for (const line of lines) {
         try {
-            const entry = JSON.parse(line) as any;
-            if (entry.link) latestMap.set(entry.link, entry);
+            const record = parseJsonRecord(line);
+            const entry = record ? recordToEntry(record) : null;
+            if (entry) latestMap.set(entry.link, entry);
         } catch { /* skip corrupted */ }
     }
 
@@ -215,7 +257,7 @@ export async function purgeEntriesByStatus(app: App, status: ArticleStatus): Pro
         path,
         kept.join('\n') + (kept.length > 0 ? '\n' : ''),
     );
-    console.log(`RSS: Purged ${removed} '${status}' entries from database.`);
+    console.debug(`RSS: Purged ${removed} '${status}' entries from database.`);
     return removed;
 }
 
@@ -236,8 +278,9 @@ async function loadJsonL(app: App, path: string): Promise<FeedDatabase> {
 
         for (const line of lines) {
             try {
-                const entry = JSON.parse(line) as ArticleEntry;
-                if (entry.link) db[entry.link] = entry;
+                const record = parseJsonRecord(line);
+                const entry = record ? recordToEntry(record) : null;
+                if (entry) db[entry.link] = entry;
             } catch (e) {
                 console.warn('RSS: Skipping corrupted line', e);
             }

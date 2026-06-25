@@ -1,6 +1,44 @@
 import { FeedItem } from '../main';
 import { RawFeedItem } from './feedExtractor';
 
+type RawTextValue = string | { _?: string } | undefined;
+type RawLinkValue = RawFeedItem['link'];
+type RawAuthorValue = RawFeedItem['author'];
+type RawCategoryValue = NonNullable<RawFeedItem['categories']>[number];
+
+interface LinkAttributes {
+    href?: string;
+    rel?: string;
+}
+
+interface LinkObject {
+    $?: LinkAttributes;
+}
+
+interface CategoryObject {
+    $?: {
+        term?: string;
+    };
+    _?: string;
+}
+
+function hasTextValue(value: unknown): value is { _?: string } {
+    return typeof value === 'object' && value !== null && '_' in value;
+}
+
+function hasLinkAttributes(value: unknown): value is LinkObject {
+    return typeof value === 'object' && value !== null && '$' in value;
+}
+
+function getLinkHref(value: unknown): string {
+    if (!hasLinkAttributes(value)) return '';
+    return typeof value.$?.href === 'string' ? value.$.href : '';
+}
+
+function hasCategoryShape(value: unknown): value is CategoryObject {
+    return typeof value === 'object' && value !== null;
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export function processItem(raw: RawFeedItem): FeedItem {
@@ -73,7 +111,7 @@ function deduplicateRaws(raws: RawFeedItem[]): RawFeedItem[] {
 
 // ─── Title ────────────────────────────────────────────────────────────────────
 
-const INVALID_FILENAME_CHARS = /[\\/:*?"<>|#\[\]^]/g;
+const INVALID_FILENAME_CHARS = /[\\/:*?"<>|#[\]^]/g;
 
 export function decodeHtmlEntities(text: string): string {
     return text
@@ -81,8 +119,8 @@ export function decodeHtmlEntities(text: string): string {
         .replace(/&lt;/g, '<')
         .replace(/&gt;/g, '>')
         .replace(/&quot;/g, '"')
-        .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
-        .replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCharCode(parseInt(code, 16)))
+        .replace(/&#(\d+);/g, (_match: string, code: string) => String.fromCharCode(Number(code)))
+        .replace(/&#x([0-9a-fA-F]+);/g, (_match: string, code: string) => String.fromCharCode(parseInt(code, 16)))
         .replace(/&apos;/g, "'")
         .replace(/&nbsp;/g, ' ')
         .replace(/&[a-z]+;/gi, '');
@@ -96,23 +134,24 @@ export function sanitizeFileName(name: string): string {
         .substring(0, 200);
 }
 
-function processTitle(raw: any): string {
+function processTitle(raw: RawTextValue): string {
     if (!raw) return '';
-    const text = typeof raw === 'string' ? raw : (raw?._ ?? String(raw));
+    const text = typeof raw === 'string' ? raw : (raw._ ?? '');
     return decodeHtmlEntities(text.trim());
 }
 
 // ─── Link ─────────────────────────────────────────────────────────────────────
 
-function processLink(raw: any): string {
+function processLink(raw: RawLinkValue): string {
     if (!raw) return '';
     if (typeof raw === 'string') return raw.trim();
     if (Array.isArray(raw)) {
-        const alternate = raw.find((l: any) => l?.$?.rel === 'alternate') ?? raw[0];
-        return alternate?.$?.href ?? String(alternate).trim();
+        const alternate = raw.find(link => link.$?.rel === 'alternate') ?? raw[0];
+        return getLinkHref(alternate);
     }
-    if (raw?.$?.href) return raw.$.href.trim();
-    return String(raw).trim();
+    const href = getLinkHref(raw);
+    if (href) return href.trim();
+    return '';
 }
 
 // ─── HTML cleaning ────────────────────────────────────────────────────────────
@@ -154,12 +193,12 @@ function youtubeEmbed(link: string): string | null {
     return match ? `![](https://www.youtube.com/watch?v=${match[1]})` : null;
 }
 
-function processContent(raw: any, link = ''): string {
+function processContent(raw: RawTextValue, link = ''): string {
     const embed = link ? youtubeEmbed(link) : null;
 
     if (!raw) return embed ?? '';
 
-    const text = typeof raw === 'string' ? raw : (raw?._ ?? String(raw));
+    const text = typeof raw === 'string' ? raw : (raw._ ?? '');
 
     const cleaned = cleanHtml(text);
 
@@ -169,13 +208,13 @@ function processContent(raw: any, link = ''): string {
 
 // ─── Description ─────────────────────────────────────────────────────────────
 
-function processDescription(raw: any): string {
+function processDescription(raw: RawTextValue): string {
     if (!raw) return '';
-    const text = typeof raw === 'string' ? raw : (raw?._ ?? String(raw));
+    const text = typeof raw === 'string' ? raw : (raw._ ?? '');
     return cleanHtml(text);
 }
 
-function processDescriptionShort(raw: any): string {
+function processDescriptionShort(raw: RawTextValue): string {
     const full = processDescription(raw);
     if (!full) return '';
     const oneLine = full.replace(/\n+/g, ' ').trim();
@@ -184,30 +223,30 @@ function processDescriptionShort(raw: any): string {
 
 // ─── Author ───────────────────────────────────────────────────────────────────
 
-function processAuthor(raw: any): string {
+function processAuthor(raw: RawAuthorValue): string {
     if (!raw) return '';
     if (typeof raw === 'string') return raw.trim();
-    if (raw?.name) return String(raw.name).trim();
-    if (raw?._) return String(raw._).trim();
-    return String(raw).trim();
+    if (raw.name) return raw.name.trim();
+    if (raw._) return raw._.trim();
+    return '';
 }
 
 // ─── Date ─────────────────────────────────────────────────────────────────────
 
-function processPubDate(raw: any): string {
+function processPubDate(raw: string | undefined): string {
     if (!raw) return '';
-    return String(raw).trim();
+    return raw.trim();
 }
 
 // ─── Categories ───────────────────────────────────────────────────────────────
 
-function processCategories(raw: any): string[] {
+function processCategories(raw: RawFeedItem['categories']): string[] {
     if (!raw) return [];
     const cats = Array.isArray(raw) ? raw : [raw];
-    return cats.map((c: any) => {
+    return cats.map((c: RawCategoryValue) => {
         if (typeof c === 'string') return c.trim();
-        if (c?.$?.term) return String(c.$.term).trim();
-        if (c?._) return String(c._).trim();
-        return String(c).trim();
+        if (hasCategoryShape(c) && c.$?.term) return c.$.term.trim();
+        if (hasTextValue(c) && c._) return c._.trim();
+        return '';
     }).filter(Boolean);
 }

@@ -3,6 +3,18 @@ import RssPlugin, { FeedConfig } from '../main';
 import { fetchAndExtract } from './feedExtractor';
 import { FeedEditModal } from './feedEdit';
 
+function applyCssText(element: HTMLElement, cssText: string): void {
+    const properties: Record<string, string> = {};
+    for (const declaration of cssText.split(';')) {
+        const separator = declaration.indexOf(':');
+        if (separator < 0) continue;
+        const property = declaration.slice(0, separator).trim();
+        const value = declaration.slice(separator + 1).trim();
+        if (property && value) properties[property] = value;
+    }
+    element.setCssProps(properties);
+}
+
 // ─── Device detection ─────────────────────────────────────────────────────────
 
 let _isTouchDevice: boolean | undefined;
@@ -47,33 +59,33 @@ export class AddUrlModal extends Modal {
 
     onOpen() {
         const { contentEl } = this;
-        contentEl.createEl('h2', { text: 'Add RSS Feed' });
+        contentEl.createEl('h2', { text: 'Add feed' });
 
         const urlSetting = new Setting(contentEl)
-            .setName('Feed URL')
-            .setDesc('Enter the RSS/Atom link.');
+            .setName('Feed address')
+            .setDesc('Enter the feed link.');
 
-        urlSetting.settingEl.style.flexDirection = 'column';
-        urlSetting.settingEl.style.alignItems    = 'flex-start';
-        urlSetting.controlEl.style.width         = '100%';
-        urlSetting.controlEl.style.marginTop     = '8px';
+        urlSetting.settingEl.setCssProps({ 'flex-direction': 'column' });
+        urlSetting.settingEl.setCssProps({ 'align-items': 'flex-start' });
+        urlSetting.controlEl.setCssProps({ 'width': '100%' });
+        urlSetting.controlEl.setCssProps({ 'margin-top': '8px' });
 
         const urlInput = urlSetting.controlEl.createEl('input', { type: 'text' });
         urlInput.placeholder    = 'https://example.com/rss.xml';
-        urlInput.style.cssText  = `width: 100%; display: block; box-sizing: border-box; font-size: ${inputFontSize()};`;
+        applyCssText(urlInput, `width: 100%; display: block; box-sizing: border-box; font-size: ${inputFontSize()};`);
         urlInput.inputMode      = 'url';
         urlInput.autocomplete   = 'off';
         urlInput.autocapitalize = 'off';
         urlInput.oninput = () => { this.url = urlInput.value; };
 
         const btnContainer = contentEl.createDiv();
-        btnContainer.style.cssText = 'margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;';
+        applyCssText(btnContainer, 'margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;');
 
         const cancelBtn = btnContainer.createEl('button', { text: 'Cancel' });
         cancelBtn.onclick = () => this.close();
 
         const addBtn = btnContainer.createEl('button', { cls: 'mod-cta' });
-        addBtn.style.cssText = 'display: flex; align-items: center; gap: 6px; min-width: 110px; justify-content: center;';
+        applyCssText(addBtn, 'display: flex; align-items: center; gap: 6px; min-width: 110px; justify-content: center;');
 
         const setButtonState = (loading: boolean) => {
             addBtn.empty();
@@ -82,26 +94,19 @@ export class AddUrlModal extends Modal {
 
             if (loading) {
                 const spinner = addBtn.createDiv();
-                spinner.style.cssText = `
+                applyCssText(spinner, `
                     width: 12px; height: 12px;
                     border: 2px solid rgba(255,255,255,0.3);
                     border-top-color: white;
                     border-radius: 50%;
                     animation: rss-spin 0.7s linear infinite;
                     flex-shrink: 0;
-                `;
+                `);
                 addBtn.createSpan({ text: 'Fetching...' });
             } else {
-                addBtn.createSpan({ text: 'Fetch & Edit' });
+                addBtn.createSpan({ text: 'Fetch and edit' });
             }
         };
-
-        if (!document.getElementById('rss-spin-style')) {
-            const style = document.createElement('style');
-            style.id = 'rss-spin-style';
-            style.textContent = '@keyframes rss-spin { to { transform: rotate(360deg); } }';
-            document.head.appendChild(style);
-        }
 
         setButtonState(false);
 
@@ -192,8 +197,9 @@ export async function addFeed(
             // Save settings first so all per-feed overrides are persisted,
             // then fetch in the background — UI is not blocked.
             await plugin.saveSettings();
-            plugin.updateFeed(addedFeed).catch(err => {
-                new Notice(`Failed to fetch feed: ${err.message}`);
+            plugin.updateFeed(addedFeed).catch((err: unknown) => {
+                const message = err instanceof Error ? err.message : String(err);
+                new Notice(`Failed to fetch feed: ${message}`);
             });
             refresh?.();
         },

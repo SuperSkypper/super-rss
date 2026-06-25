@@ -1,4 +1,4 @@
-import { Notice, setIcon } from 'obsidian';
+import { MetadataCache, Notice, setIcon } from 'obsidian';
 import RssPlugin, { FrontmatterMode, FrontmatterPropertyTemplate } from '../main';
 import { migrateLegacyFrontmatterTemplate } from './frontmatterMigration';
 
@@ -32,6 +32,28 @@ export const TEMPLATE_VARIABLES: TemplateVariable[] = [
     { tag: '{{content}}',       scopes: ['content'] },
 ];
 
+function applyCssText(element: HTMLElement, cssText: string): void {
+    const properties: Record<string, string> = {};
+    for (const declaration of cssText.split(';')) {
+        const separator = declaration.indexOf(':');
+        if (separator < 0) continue;
+        const property = declaration.slice(0, separator).trim();
+        const value = declaration.slice(separator + 1).trim();
+        if (property && value) properties[property] = value;
+    }
+    element.setCssProps(properties);
+}
+
+interface PropertyInfo {
+    name?: string;
+    displayName?: string;
+}
+
+interface MetadataCacheWithPropertyInfos extends MetadataCache {
+    getAllPropertyInfos?: () => Record<string, PropertyInfo>;
+}
+
+
 export async function copyToClipboard(text: string): Promise<void> {
     if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text);
@@ -39,7 +61,7 @@ export async function copyToClipboard(text: string): Promise<void> {
     }
     const textArea = document.createElement('textarea');
     textArea.value = text;
-    textArea.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+    applyCssText(textArea, 'position:fixed;top:-9999px;left:-9999px;opacity:0;');
     document.body.appendChild(textArea);
     textArea.focus();
     textArea.select();
@@ -73,9 +95,9 @@ const CARD_STYLE = `
 `;
 
 function accentBorder(el: HTMLElement, active: boolean): void {
-    el.style.borderColor = active
+    el.setCssProps({ 'border-color': active
         ? 'var(--interactive-accent)'
-        : 'var(--background-modifier-border)';
+        : 'var(--background-modifier-border)' });
 }
 
 function createCardWrapper(containerEl: HTMLElement): HTMLDivElement {
@@ -90,10 +112,10 @@ function createCardWrapper(containerEl: HTMLElement): HTMLDivElement {
 
 function createCardHeader(containerEl: HTMLElement, icon: string, title: string): void {
     const header = containerEl.createDiv();
-    header.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:3px;';
+    applyCssText(header, 'display:flex;align-items:center;gap:6px;margin-bottom:3px;');
     header.createEl('span', { text: icon, attr: { 'aria-hidden': 'true' } });
     const titleEl = header.createEl('span', { text: title });
-    titleEl.style.cssText = 'font-weight:600;color:var(--text-normal);font-size:0.9em;';
+    applyCssText(titleEl, 'font-weight:600;color:var(--text-normal);font-size:0.9em;');
 }
 
 // ─── Main render ──────────────────────────────────────────────────────────────
@@ -103,7 +125,7 @@ export function renderGlobalTemplateTab(
     plugin: RssPlugin,
     autoResize: (el: HTMLTextAreaElement) => void
 ): void {
-    containerEl.createEl('h3', { text: 'Default Template Configuration' });
+    containerEl.createEl('h3', { text: 'Default template configuration' });
 
     renderVariableReference(containerEl);
     renderFileNameSetting(containerEl, plugin);
@@ -124,29 +146,29 @@ const ROW_STYLE = `
 // FIX: exported so editFeed.ts can import and reuse this box directly.
 export function renderVariableReference(containerEl: HTMLElement): void {
     const infoBox = containerEl.createDiv();
-    infoBox.style.cssText = `
+    applyCssText(infoBox, `
         background:var(--background-secondary);
         padding:12px 16px;border-radius:8px;
         margin-bottom:12px;
         border:1px solid var(--background-modifier-border);
         font-size:0.9em;
-    `;
+    `);
 
-    infoBox.createEl('strong', { text: 'Available Variables' });
+    infoBox.createEl('strong', { text: 'Available variables' });
 
     const subtitle = infoBox.createEl('p', {
         text: 'Tap any variable to copy. Scope icons show where each variable can be used.',
     });
-    subtitle.style.cssText = 'color:var(--text-muted);margin:3px 0 10px;font-size:0.85em;';
+    applyCssText(subtitle, 'color:var(--text-muted);margin:3px 0 10px;font-size:0.85em;');
 
     // Legend
     const legend = infoBox.createDiv();
     legend.setAttribute('role', 'list');
-    legend.style.cssText = 'display:flex;gap:12px;margin-bottom:8px;flex-wrap:wrap;';
+    applyCssText(legend, 'display:flex;gap:12px;margin-bottom:8px;flex-wrap:wrap;');
 
     SCOPE_ICONS.forEach(({ icon, label }) => {
         const item = legend.createDiv({ attr: { role: 'listitem' } });
-        item.style.cssText = 'display:flex;align-items:center;gap:5px;color:var(--text-muted);font-size:0.85em;';
+        applyCssText(item, 'display:flex;align-items:center;gap:5px;color:var(--text-muted);font-size:0.85em;');
         item.createEl('span', { text: icon, attr: { 'aria-hidden': 'true' } });
         item.createEl('span', { text: label });
     });
@@ -154,7 +176,7 @@ export function renderVariableReference(containerEl: HTMLElement): void {
     // Variable grid
     const grid = infoBox.createDiv();
     grid.setAttribute('role', 'list');
-    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:6px;';
+    applyCssText(grid, 'display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:6px;');
 
     TEMPLATE_VARIABLES.forEach(v => {
         const row = grid.createDiv({
@@ -172,15 +194,15 @@ export function renderVariableReference(containerEl: HTMLElement): void {
         }
 
         const scopeIcons = row.createDiv({ attr: { 'aria-hidden': 'true' } });
-        scopeIcons.style.cssText = 'display:flex;gap:3px;flex-shrink:0;font-size:0.9em;';
+        applyCssText(scopeIcons, 'display:flex;gap:3px;flex-shrink:0;font-size:0.9em;');
 
         SCOPE_ICONS.forEach(({ scope, icon }) => {
             const el = scopeIcons.createEl('span', { text: icon });
-            el.style.opacity = v.scopes.includes(scope) ? '1' : '0.15';
+            el.setCssProps({ 'opacity': v.scopes.includes(scope) ? '1' : '0.15' });
         });
 
         const tagEl = row.createEl('span', { text: v.tag });
-        tagEl.style.cssText = 'color:var(--text-accent);font-size:0.92em;font-weight:500;line-height:1.2;white-space:nowrap;';
+        applyCssText(tagEl, 'color:var(--text-accent);font-size:0.92em;font-weight:500;line-height:1.2;white-space:nowrap;');
 
         const handleCopy = async () => {
             try {
@@ -206,12 +228,12 @@ export function renderVariableReference(containerEl: HTMLElement): void {
 
 // ─── File name setting ────────────────────────────────────────────────────────
 
-function debounce<T extends (...args: any[]) => void | Promise<void>>(
+function debounce<T extends (...args: unknown[]) => void | Promise<void>>(
     fn: T,
     ms: number
 ): (...args: Parameters<T>) => void {
     let timer: ReturnType<typeof setTimeout>;
-    return ((...args: any[]) => {
+    return ((...args: Parameters<T>) => {
         clearTimeout(timer);
         timer = setTimeout(() => {
             void fn(...args);
@@ -229,18 +251,18 @@ function renderFileNameSetting(
     const desc = wrapper.createEl('p', {
         text: 'Variables permitted: {{title}}, {{author}}, {{datepublished}}, {{datesaved}}, {{snippet}}, {{feedname}}.',
     });
-    desc.style.cssText = 'color:var(--text-muted);font-size:0.85em;margin:0 0 8px;';
+    applyCssText(desc, 'color:var(--text-muted);font-size:0.85em;margin:0 0 8px;');
 
     const input = wrapper.createEl('input', {
         type: 'text',
         attr: { 'aria-label': 'File name template' },
     });
     input.value = plugin.settings.fileNameTemplate ?? '{{title}}';
-    input.style.cssText = `
+    applyCssText(input, `
         width:100%;box-sizing:border-box;
         font-family:var(--font-monospace);
         font-size:0.85em;
-    `;
+    `);
 
     const saveFileName = debounce(async () => {
         plugin.settings.fileNameTemplate = input.value;
@@ -303,10 +325,10 @@ function getKnownPropertyNames(plugin: RssPlugin): string[] {
         addName(property.name, true);
     });
 
-    const cache = (plugin.app.metadataCache as any);
+    const cache = plugin.app.metadataCache as MetadataCacheWithPropertyInfos;
     const propertyInfos = cache.getAllPropertyInfos?.();
     if (propertyInfos && typeof propertyInfos === 'object') {
-        Object.entries(propertyInfos).forEach(([name, info]: [string, any]) => {
+        Object.entries(propertyInfos).forEach(([name, info]) => {
             addName(info?.name ?? info?.displayName ?? name);
         });
     }
@@ -364,10 +386,10 @@ function renderFrontmatterModeSetting(
     const desc = wrapper.createEl('p', {
         text: 'Add note properties. Supports all variables except {{content}}.',
     });
-    desc.style.cssText = 'color:var(--text-muted);font-size:0.85em;margin:0 0 10px;';
+    applyCssText(desc, 'color:var(--text-muted);font-size:0.85em;margin:0 0 10px;');
 
     const modeControls = wrapper.createDiv();
-    modeControls.style.cssText = 'display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;';
+    applyCssText(modeControls, 'display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;');
 
     const body = wrapper.createDiv();
 
@@ -389,8 +411,8 @@ function renderFrontmatterModeSetting(
         void plugin.saveSettings();
     };
 
-    const editBtn = modeControls.createEl('button', { text: 'Edit Mode', attr: { type: 'button' } });
-    const sourceBtn = modeControls.createEl('button', { text: 'Source Mode', attr: { type: 'button' } });
+    const editBtn = modeControls.createEl('button', { text: 'Edit mode', attr: { type: 'button' } });
+    const sourceBtn = modeControls.createEl('button', { text: 'Source mode', attr: { type: 'button' } });
 
     const buttonBase = 'padding:5px 10px;border-radius:6px;border:1px solid var(--background-modifier-border);cursor:pointer;font-size:0.85em;';
     const renderModeButtons = () => {
@@ -420,10 +442,10 @@ function renderPropertiesEditor(containerEl: HTMLElement, plugin: RssPlugin): vo
     const desc = containerEl.createEl('p', {
         text: 'Choose a name and value.',
     });
-    desc.style.cssText = 'color:var(--text-muted);font-size:0.85em;margin:0 0 10px;';
+    applyCssText(desc, 'color:var(--text-muted);font-size:0.85em;margin:0 0 10px;');
 
     const list = containerEl.createDiv();
-    list.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+    applyCssText(list, 'display:flex;flex-direction:column;gap:6px;');
 
     const datalistId = `rss-property-names-${Date.now()}`;
     const datalist = containerEl.createEl('datalist', { attr: { id: datalistId } });
@@ -443,8 +465,8 @@ function renderPropertiesEditor(containerEl: HTMLElement, plugin: RssPlugin): vo
         });
     };
 
-    const addBtn = containerEl.createEl('button', { text: '+ Add property', attr: { type: 'button' } });
-    addBtn.style.cssText = `
+    const addBtn = containerEl.createEl('button', { text: 'Add property', attr: { type: 'button' } });
+    applyCssText(addBtn, `
         margin-top:10px;
         border:1px solid var(--background-modifier-border);
         border-radius:6px;
@@ -454,7 +476,7 @@ function renderPropertiesEditor(containerEl: HTMLElement, plugin: RssPlugin): vo
         cursor:pointer;
         padding:6px 10px;
         width:max-content;
-    `;
+    `);
     addBtn.onclick = () => {
         ensureFrontmatterProperties(plugin).push({
             id: createPropertyId(),
@@ -479,7 +501,7 @@ function renderPropertyRow(
     save: () => void
 ): void {
     const row = container.createDiv();
-    row.style.cssText = `
+    applyCssText(row, `
         display:grid;
         grid-template-columns:24px minmax(130px, 0.8fr) minmax(180px, 1.5fr) 28px;
         gap:7px;
@@ -487,27 +509,27 @@ function renderPropertyRow(
         border-radius:6px;
         border-top:2px solid transparent;
         padding-top:2px;
-    `;
+    `);
 
     row.ondragstart = event => {
         event.dataTransfer?.setData('text/plain', String(index));
         if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
-        row.style.opacity = '0.5';
+        row.setCssProps({ 'opacity': '0.5' });
     };
     row.ondragend = () => {
-        row.style.opacity = '1';
-        row.style.borderTopColor = 'transparent';
+        row.setCssProps({ 'opacity': '1' });
+        row.setCssProps({ 'border-top-color': 'transparent' });
     };
     row.ondragover = event => {
         event.preventDefault();
-        row.style.borderTopColor = 'var(--interactive-accent)';
+        row.setCssProps({ 'border-top-color': 'var(--interactive-accent)' });
     };
     row.ondragleave = () => {
-        row.style.borderTopColor = 'transparent';
+        row.setCssProps({ 'border-top-color': 'transparent' });
     };
     row.ondrop = event => {
         event.preventDefault();
-        row.style.borderTopColor = 'transparent';
+        row.setCssProps({ 'border-top-color': 'transparent' });
         const from = Number(event.dataTransfer?.getData('text/plain'));
         if (!Number.isInteger(from) || from === index) return;
         const properties = ensureFrontmatterProperties(plugin);
@@ -520,7 +542,7 @@ function renderPropertyRow(
 
     const drag = row.createEl('button', { attr: { 'aria-label': 'Drag property', type: 'button' } });
     drag.draggable = true;
-    drag.style.cssText = 'width:24px;height:28px;padding:0;border:none;background:transparent;color:var(--text-muted);cursor:grab;display:flex;align-items:center;justify-content:center;';
+    applyCssText(drag, 'width:24px;height:28px;padding:0;border:none;background:transparent;color:var(--text-muted);cursor:grab;display:flex;align-items:center;justify-content:center;');
     setIcon(drag, 'grip-vertical');
 
     const nameInput = row.createEl('input', {
@@ -532,7 +554,7 @@ function renderPropertyRow(
         },
     });
     nameInput.value = property.name;
-    nameInput.style.cssText = 'width:100%;box-sizing:border-box;font-size:0.85em;';
+    applyCssText(nameInput, 'width:100%;box-sizing:border-box;font-size:0.85em;');
     nameInput.oninput = () => {
         property.name = nameInput.value;
         void save();
@@ -546,14 +568,14 @@ function renderPropertyRow(
         },
     });
     valueInput.value = property.value;
-    valueInput.style.cssText = 'width:100%;box-sizing:border-box;font-family:var(--font-monospace);font-size:0.85em;';
+    applyCssText(valueInput, 'width:100%;box-sizing:border-box;font-family:var(--font-monospace);font-size:0.85em;');
     valueInput.oninput = () => {
         property.value = valueInput.value;
         void save();
     };
 
     const deleteBtn = row.createEl('button', { attr: { 'aria-label': 'Delete property', type: 'button' } });
-    deleteBtn.style.cssText = 'width:28px;height:28px;padding:0;border:none;background:transparent;color:var(--text-muted);display:flex;align-items:center;justify-content:center;cursor:pointer;';
+    applyCssText(deleteBtn, 'width:28px;height:28px;padding:0;border:none;background:transparent;color:var(--text-muted);display:flex;align-items:center;justify-content:center;cursor:pointer;');
     setIcon(deleteBtn, 'trash-2');
     deleteBtn.onclick = () => {
         ensureFrontmatterProperties(plugin).splice(index, 1);
@@ -571,13 +593,13 @@ function renderSourceFrontmatter(
         attr: { 'aria-label': 'Source frontmatter template' },
     });
     textarea.value = plugin.settings.frontmatterTemplate ?? '';
-    textarea.style.cssText = `
+    applyCssText(textarea, `
         width:100%;box-sizing:border-box;
         font-family:var(--font-monospace);
         font-size:0.85em;
         min-height:150px;
         resize:vertical;overflow:auto;
-    `;
+    `);
 
     const saveTextarea = debounce(async () => {
         plugin.settings.frontmatterTemplate = textarea.value;
@@ -603,19 +625,19 @@ function renderTextAreaSetting(
     createCardHeader(wrapper, cfg.icon, cfg.title);
 
     const desc = wrapper.createEl('p', { text: cfg.desc });
-    desc.style.cssText = 'color:var(--text-muted);font-size:0.85em;margin:0 0 8px;';
+    applyCssText(desc, 'color:var(--text-muted);font-size:0.85em;margin:0 0 8px;');
 
     const textarea = wrapper.createEl('textarea', {
         attr: { 'aria-label': `${cfg.title} template` },
     });
     textarea.value = getTemplateSetting(plugin, cfg.key);
-    textarea.style.cssText = `
+    applyCssText(textarea, `
         width:100%;box-sizing:border-box;
         font-family:var(--font-monospace);
         font-size:0.85em;
         min-height:120px;
         resize:vertical;overflow:auto;
-    `;
+    `);
 
     const saveTextarea = debounce(async () => {
         setTemplateSetting(plugin, cfg.key, textarea.value);

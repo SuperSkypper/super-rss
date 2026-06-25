@@ -1,13 +1,28 @@
 import { Plugin, Notice, normalizePath } from 'obsidian';
 
+
 // ─── Types & defaults (extracted to keep main.ts lean) ───────────────────────
 import { DEFAULT_SETTINGS } from './settings/settingsDefault';
-import type { FeedConfig, PluginSettings } from './settings/settingsDefault';
+import type { FeedConfig, PluginLocalSettings, PluginSettings } from './settings/settingsDefault';
 import { migrateLegacyFrontmatterTemplate } from './settings/frontmatterMigration';
 export type { FeedItem, FeedConfig, FeedGroup, FrontmatterMode, FrontmatterPropertyTemplate, FrontmatterPropertyType, ImageLocation, DeleteBehavior, PluginSettings } from './settings/settingsDefault';
 export { DEFAULT_SETTINGS } from './settings/settingsDefault';
 
 const MARK_AS_READ_PROTOCOL = 'rss-mark-as-read';
+
+interface LocalStorageCapableApp {
+    loadLocalStorage?: (key: string) => unknown;
+    saveLocalStorage?: (key: string, data: unknown) => void;
+}
+
+function setLegacyPluginEnabled(settings: PluginSettings, value: boolean): void {
+    (settings as unknown as Record<string, unknown>)['pluginEnabled'] = value;
+}
+
+function getLegacyPluginEnabled(settings: Partial<PluginSettings>): boolean | undefined {
+    const value = (settings as unknown as Record<string, unknown>)['pluginEnabled'];
+    return typeof value === 'boolean' ? value : undefined;
+}
 
 // --- 2. HELPERS ---
 
@@ -35,21 +50,24 @@ export function resolveFeedPath(feed: FeedConfig, settings: PluginSettings): str
 
 export default class RssPlugin extends Plugin {
     settings!: PluginSettings;
+    localSettings!: PluginLocalSettings;
     isUpdating: boolean = false;
     stopRequested: boolean = false;
     private intervalIds: number[] = [];
     private statusBarItem: HTMLElement | null = null;
     private currentUpdatePromise: Promise<void> | null = null;
+    private localSettingsKey!: string;
 
     // Keep references so we can show/hide ribbon icons after saveSettings
     private ribbonUpdateEl: HTMLElement | null = null;
     private ribbonAddEl: HTMLElement | null = null;
+    private ribbonCleanupEl: HTMLElement | null = null;
 
     async onload() {
         await this.loadSettings();
 
         this.statusBarItem = this.addStatusBarItem();
-        this.statusBarItem.style.display = 'none';
+        this.statusBarItem.setCssProps({ 'display': 'none' });
 
         this.addCommand({
             id: 'update-rss-feeds',
@@ -67,17 +85,15 @@ export default class RssPlugin extends Plugin {
             },
         });
 
-        // ── Ribbon: update all feeds ──────────────────────────────────────────
-        this.ribbonUpdateEl = this.addRibbonIcon('rss', 'Update RSS feeds', () => {
-            void this.updateAllFeeds();
+        this.addCommand({
+            id: 'delete-old-articles-now',
+            name: 'Delete old articles now',
+            callback: () => {
+                void this.deleteOldArticlesNow();
+            },
         });
-        this.ribbonUpdateEl.style.display = this.settings.ribbonUpdate ? '' : 'none';
 
-        // ── Ribbon: add a new feed ────────────────────────────────────────────
-        this.ribbonAddEl = this.addRibbonIcon('circle-plus', 'Add RSS feed', () => {
-            void this.openAddFeedModal();
-        });
-        this.ribbonAddEl.style.display = this.settings.ribbonAdd ? '' : 'none';
+        this.applyRibbonVisibility();
 
         // ── Mark as Read URI handler ──────────────────────────────────────────
         this.registerObsidianProtocolHandler(MARK_AS_READ_PROTOCOL, (params) => {
@@ -101,7 +117,7 @@ export default class RssPlugin extends Plugin {
 
     setStatusBar(current: number, total: number, feedName: string): void {
         if (this.settings.showStatusBar && this.statusBarItem) {
-            this.statusBarItem.style.display = '';
+            this.statusBarItem.setCssProps({ 'display': '' });
             this.statusBarItem.setText(`Saving RSS: ${current}/${total}`);
             this.statusBarItem.title = `Updating feeds ${current}/${total}: ${feedName}`;
         }
@@ -109,13 +125,13 @@ export default class RssPlugin extends Plugin {
 
     clearStatusBar(): void {
         if (this.statusBarItem) {
-            this.statusBarItem.style.display = 'none';
+            this.statusBarItem.setCssProps({ 'display': 'none' });
         }
     }
 
     setStatusBarText(text: string, tooltip?: string): void {
         if (this.settings.showStatusBar && this.statusBarItem) {
-            this.statusBarItem.style.display = '';
+            this.statusBarItem.setCssProps({ 'display': '' });
             this.statusBarItem.setText(text);
             this.statusBarItem.title = tooltip ?? text;
         }
@@ -125,11 +141,11 @@ export default class RssPlugin extends Plugin {
 
     showSummary(savedCount: number, deletedCount: number): void {
         if (savedCount === 0 && deletedCount === 0) {
-            new Notice('No New RSS Items', 4000);
+            new Notice('No new RSS items', 4000);
             return;
         }
         if (savedCount > 0) {
-            new Notice(`${savedCount} RSS Item${savedCount !== 1 ? 's' : ''} Saved`, 4000);
+            new Notice(`${savedCount} RSS item${savedCount !== 1 ? 's' : ''} saved`, 4000);
         }
         if (deletedCount > 0) {
             new Notice(`${deletedCount} RSS Item${deletedCount !== 1 ? 's' : ''} Deleted`, 4000);
@@ -139,11 +155,37 @@ export default class RssPlugin extends Plugin {
     // ── Ribbon visibility (called automatically by saveSettings) ──────────────
 
     applyRibbonVisibility(): void {
-        if (this.ribbonUpdateEl) {
-            this.ribbonUpdateEl.style.display = this.settings.ribbonUpdate ? '' : 'none';
+        if (this.settings.ribbonUpdate) {
+            if (!this.ribbonUpdateEl) {
+                this.ribbonUpdateEl = this.addRibbonIcon('rss', 'Update RSS feeds', () => {
+                    void this.updateAllFeeds();
+                });
+            }
+        } else {
+            this.ribbonUpdateEl?.remove();
+            this.ribbonUpdateEl = null;
         }
-        if (this.ribbonAddEl) {
-            this.ribbonAddEl.style.display = this.settings.ribbonAdd ? '' : 'none';
+
+        if (this.settings.ribbonAdd) {
+            if (!this.ribbonAddEl) {
+                this.ribbonAddEl = this.addRibbonIcon('circle-plus', 'Add RSS feed', () => {
+                    void this.openAddFeedModal();
+                });
+            }
+        } else {
+            this.ribbonAddEl?.remove();
+            this.ribbonAddEl = null;
+        }
+
+        if (this.settings.ribbonCleanup) {
+            if (!this.ribbonCleanupEl) {
+                this.ribbonCleanupEl = this.addRibbonIcon('trash', 'Delete old articles now', () => {
+                    void this.deleteOldArticlesNow();
+                });
+            }
+        } else {
+            this.ribbonCleanupEl?.remove();
+            this.ribbonCleanupEl = null;
         }
     }
 
@@ -165,11 +207,21 @@ export default class RssPlugin extends Plugin {
         }
     }
 
+    isAutoUpdateEnabled(): boolean {
+        return this.localSettings?.autoUpdateEnabled ?? false;
+    }
+
+    async setAutoUpdateEnabled(enabled: boolean): Promise<void> {
+        this.localSettings.autoUpdateEnabled = enabled;
+        await this.saveLocalSettings();
+        this.setupAutoUpdate();
+    }
+
     setupAutoUpdate() {
         this.intervalIds.forEach(id => window.clearInterval(id));
         this.intervalIds = [];
 
-        if (!this.settings.pluginEnabled) return;
+        if (!this.isAutoUpdateEnabled()) return;
 
         const intervalMs = this.getIntervalMs();
         if (intervalMs >= 60000) {
@@ -184,6 +236,7 @@ export default class RssPlugin extends Plugin {
 
     async saveSettingsSilent(): Promise<void> {
         this.settings.folderPath = sanitizeFolderPath(this.settings.folderPath);
+        setLegacyPluginEnabled(this.settings, false);
         await this.saveData(this.settings);
     }
 
@@ -216,7 +269,7 @@ export default class RssPlugin extends Plugin {
             await handleMarkAsRead(this.app, params);
         } catch (e) {
             console.error('RSS: Failed to mark item as read', e);
-            new Notice('RSS: Failed to mark item as read.', 4000);
+            new Notice('RSS: failed to mark item as read.', 4000);
         }
     }
 
@@ -232,7 +285,7 @@ export default class RssPlugin extends Plugin {
             this.clearStatusBar();
         }
 
-        new Notice('RSS: Update stopped.', 3000);
+        new Notice('RSS: update stopped.', 3000);
     }
 
     private runTrackedUpdate(): Promise<void> {
@@ -254,11 +307,12 @@ export default class RssPlugin extends Plugin {
     }
 
     async updateFeed(feed: FeedConfig) {
-        const [{ loadAutoDatabase, saveAutoDatabase }, { updateFeed }] = await Promise.all([
+        const [{ loadAutoDatabase, saveAutoDatabase }, { cleanupBeforeUpdate, updateFeed }] = await Promise.all([
             import('./settings/feedDatabase'),
             import('./settings/feedUpdate'),
         ]);
         const db = await loadAutoDatabase(this.app);
+        await cleanupBeforeUpdate(this.app, this, db);
         const result = await updateFeed(this.app, this, feed, db);
         await saveAutoDatabase(this.app, db);
         return result;
@@ -268,20 +322,29 @@ export default class RssPlugin extends Plugin {
         return this.runTrackedUpdate();
     }
 
+    async deleteOldArticlesNow(): Promise<void> {
+        new Notice('Running cleanup...', 3000);
+        const { runCleanupAndDedup } = await import('./settings/feedCleanup');
+        await runCleanupAndDedup(this.app, this);
+    }
+
     // ── Settings ──────────────────────────────────────────────────────────────
 
     async loadSettings() {
-        const loadedData = await this.loadData();
+        const loadedData = (await this.loadData()) as Partial<PluginSettings> | null;
+        this.localSettingsKey = `${this.manifest.id}:local-settings`;
         this.settings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
+        this.localSettings = this.loadLocalSettings(loadedData ?? {});
+        setLegacyPluginEnabled(this.settings, false);
         this.settings.folderPath = sanitizeFolderPath(this.settings.folderPath);
-        const loadedSettings = (loadedData ?? {}) as Partial<PluginSettings>;
+        const loadedSettings = loadedData ?? {};
 
         if (!this.settings.groups) this.settings.groups = [];
 
         this.settings.feeds.forEach(f => {
             if (!f.previousName) f.previousName = (f.name || '').trim();
         });
-        if (this.settings.pluginEnabled === undefined) this.settings.pluginEnabled = false;
+        if (getLegacyPluginEnabled(this.settings) === undefined) setLegacyPluginEnabled(this.settings, false);
         if (this.settings.tagShortsGlobal === undefined) this.settings.tagShortsGlobal = false;
         if (this.settings.skipShortsGlobal === undefined) this.settings.skipShortsGlobal = false;
         if (this.settings.tagLiveGlobal === undefined) this.settings.tagLiveGlobal = false;
@@ -306,6 +369,7 @@ export default class RssPlugin extends Plugin {
         if (this.settings.showStatusBar === undefined) this.settings.showStatusBar = true;
         if (this.settings.ribbonUpdate === undefined) this.settings.ribbonUpdate = true;
         if (this.settings.ribbonAdd === undefined) this.settings.ribbonAdd = true;
+        if (this.settings.ribbonCleanup === undefined) this.settings.ribbonCleanup = true;
         if (this.settings.markAsReadEnabled === undefined) this.settings.markAsReadEnabled = true;
         if (this.settings.markAsReadLinkProperty === undefined) this.settings.markAsReadLinkProperty = DEFAULT_SETTINGS.markAsReadLinkProperty;
         if (this.settings.markAsReadCheckboxProperty === undefined) this.settings.markAsReadCheckboxProperty = DEFAULT_SETTINGS.markAsReadCheckboxProperty;
@@ -313,8 +377,61 @@ export default class RssPlugin extends Plugin {
         if (this.settings.deleteBehavior === undefined) this.settings.deleteBehavior = DEFAULT_SETTINGS.deleteBehavior;
     }
 
+    private loadLocalSettings(loadedSettings: Partial<PluginSettings>): PluginLocalSettings {
+        const defaults: PluginLocalSettings = {
+            autoUpdateEnabled: getLegacyPluginEnabled(loadedSettings) ?? getLegacyPluginEnabled(DEFAULT_SETTINGS) ?? false,
+        };
+
+        try {
+            const saved = this.loadDeviceData<Partial<PluginLocalSettings>>(this.localSettingsKey);
+            if (!saved) return defaults;
+
+            return {
+                autoUpdateEnabled: saved.autoUpdateEnabled ?? defaults.autoUpdateEnabled,
+            };
+        } catch (e) {
+            console.error('RSS: Failed to load local settings', e);
+            return defaults;
+        }
+    }
+
+    private async saveLocalSettings(): Promise<void> {
+        try {
+            this.saveDeviceData(this.localSettingsKey, this.localSettings);
+        } catch (e) {
+            console.error('RSS: Failed to save local settings', e);
+            new Notice('RSS: failed to save device-specific settings.', 4000);
+        }
+    }
+
+    private loadDeviceData<T>(key: string): T | null {
+        const appWithLocalStorage = this.app as unknown as LocalStorageCapableApp;
+        if (typeof appWithLocalStorage.loadLocalStorage === 'function') {
+            return appWithLocalStorage.loadLocalStorage(key) as T | null;
+        }
+
+        const storage = globalThis.localStorage;
+        const raw = storage?.getItem(this.getLegacyLocalStorageKey(key));
+        return raw ? JSON.parse(raw) as T : null;
+    }
+
+    private saveDeviceData(key: string, data: unknown): void {
+        const appWithLocalStorage = this.app as unknown as LocalStorageCapableApp;
+        if (typeof appWithLocalStorage.saveLocalStorage === 'function') {
+            appWithLocalStorage.saveLocalStorage(key, data);
+            return;
+        }
+
+        globalThis.localStorage?.setItem(this.getLegacyLocalStorageKey(key), JSON.stringify(data));
+    }
+
+    private getLegacyLocalStorageKey(key: string): string {
+        return `${this.app.vault.getName()}:${key}`;
+    }
+
     async saveSettings() {
         this.settings.folderPath = sanitizeFolderPath(this.settings.folderPath);
+        setLegacyPluginEnabled(this.settings, false);
         await this.renameFeedFoldersIfNeeded();
         await this.saveData(this.settings);
         this.setupAutoUpdate();
@@ -347,7 +464,7 @@ export default class RssPlugin extends Plugin {
             if (existingFolder) {
                 try {
                     await this.app.vault.rename(existingFolder, newNorm);
-                    console.log(`RSS: Renamed folder "${oldNorm}" → "${newNorm}"`);
+                    console.debug(`RSS: Renamed folder "${oldNorm}" → "${newNorm}"`);
                 } catch (e) {
                     console.error(`RSS: Failed to rename folder "${oldNorm}" → "${newNorm}"`, e);
                 }

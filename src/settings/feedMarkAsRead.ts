@@ -29,7 +29,7 @@ export function buildMarkAsReadLink(filePath: string, settings: PluginSettings):
     const encodedPath = encodeURIComponent(normalizePath(filePath));
     const encodedProp = encodeURIComponent(checkboxProp);
 
-    return `[✅ Mark as Read](obsidian://${MARK_AS_READ_PROTOCOL}?file=${encodedPath}&property=${encodedProp})`;
+    return `[✅ Mark as read](obsidian://${MARK_AS_READ_PROTOCOL}?file=${encodedPath}&property=${encodedProp})`;
 }
 
 // ─── URI handler ──────────────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ export async function handleMarkAsRead(app: App, params: Record<string, string>)
     const propertyKey = params['property'] ?? 'Read';
 
     if (!fileParam) {
-        new Notice('RSS: Mark as Read — missing file path.');
+        new Notice('RSS: mark as read — missing file path.');
         return;
     }
 
@@ -63,16 +63,16 @@ export async function handleMarkAsRead(app: App, params: Record<string, string>)
     }
 
     if (!(file instanceof TFile)) {
-        new Notice(`RSS: Mark as Read — file not found: "${fileParam}"`);
+        new Notice(`RSS: mark as read — file not found: "${fileParam}"`);
         return;
     }
 
     try {
-        await app.fileManager.processFrontMatter(file, (fm) => {
-            fm[propertyKey] = !fm[propertyKey];
+        await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+            fm[propertyKey] = true;
         });
     } catch (e) {
-        console.error('RSS: Mark as Read failed:', e);
-        new Notice('RSS: Failed to update property.');
+        console.error('RSS: mark as read failed:', e);
+        new Notice('RSS: failed to update property.');
     }
 }

@@ -1,4 +1,4 @@
-import { App, Setting, Notice, setIcon, Modal } from 'obsidian';
+import { App, Setting, Notice, setIcon } from 'obsidian';
 import RssPlugin, { FeedConfig, FeedGroup } from '../main';
 import {
     sortGroups,
@@ -17,12 +17,12 @@ let _ConfirmDeleteModal: typeof import('./feedEdit').ConfirmDeleteModal | undefi
 
 async function getFeedEditModal() {
     if (!_FeedEditModal) ({ FeedEditModal: _FeedEditModal } = await import('./feedEdit'));
-    return _FeedEditModal!;
+    return _FeedEditModal;
 }
 
 async function getConfirmDeleteModal() {
     if (!_ConfirmDeleteModal) ({ ConfirmDeleteModal: _ConfirmDeleteModal } = await import('./feedEdit'));
-    return _ConfirmDeleteModal!;
+    return _ConfirmDeleteModal;
 }
 
 // ─── Shared CSS Constants for Alignment ───────────────────────────────────────
@@ -35,9 +35,9 @@ const COLLATOR = new Intl.Collator(undefined, { sensitivity: 'base' });
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function debounce<T extends (...args: any[]) => void>(fn: T, ms: number): T {
+function debounce<T extends (...args: unknown[]) => void>(fn: T, ms: number): T {
     let timer: ReturnType<typeof setTimeout>;
-    return ((...args: any[]) => {
+    return ((...args: unknown[]) => {
         clearTimeout(timer);
         timer = setTimeout(() => fn(...args), ms);
     }) as T;
@@ -59,8 +59,28 @@ function debounce<T extends (...args: any[]) => void>(fn: T, ms: number): T {
 // On every scroll event, we recalculate which indices are visible and
 // add/remove cards as needed. Cards are keyed by feed URL to allow reuse.
 
-const CARD_HEIGHT = 68;   // px — measured from the actual rendered card
+const DESKTOP_CARD_HEIGHT = 68;   // px - measured from the actual rendered card
+const MOBILE_CARD_HEIGHT  = 124;  // px - cards wrap actions below the feed name
 const OVERSCAN    = 5;    // extra cards to render above and below viewport
+
+function getFeedCardHeight(): number {
+    if (typeof window === 'undefined') return DESKTOP_CARD_HEIGHT;
+    return window.matchMedia('(max-width: 560px), (hover: none) and (pointer: coarse)').matches
+        ? MOBILE_CARD_HEIGHT
+        : DESKTOP_CARD_HEIGHT;
+}
+
+function applyCssText(element: HTMLElement, cssText: string): void {
+    const properties: Record<string, string> = {};
+    for (const declaration of cssText.split(';')) {
+        const separator = declaration.indexOf(':');
+        if (separator < 0) continue;
+        const property = declaration.slice(0, separator).trim();
+        const value = declaration.slice(separator + 1).trim();
+        if (property && value) properties[property] = value;
+    }
+    element.setCssProps(properties);
+}
 
 interface VirtualList {
     /** Call when the dataset or filters change — rebuilds from scratch */
@@ -78,41 +98,43 @@ function createVirtualList(
 ): VirtualList {
     // ── DOM structure ─────────────────────────────────────────────────────────
     const scrollEl = container.createDiv();
-    scrollEl.style.cssText = `
+    applyCssText(scrollEl, `
         height: 520px;
         overflow-y: auto;
         position: relative;
-    `;
+    `);
 
     const innerEl = scrollEl.createDiv();
-    innerEl.style.cssText = 'position: relative;';
+    applyCssText(innerEl, 'position: relative;');
 
     const spacerTop = innerEl.createDiv();
-    spacerTop.style.cssText = 'position: absolute; top: 0; left: 0; right: 0; pointer-events: none;';
+    applyCssText(spacerTop, 'position: absolute; top: 0; left: 0; right: 0; pointer-events: none;');
 
     const itemsEl = innerEl.createDiv();
-    itemsEl.style.cssText = 'position: absolute; left: 0; right: 0;';
+    applyCssText(itemsEl, 'position: absolute; left: 0; right: 0;');
 
     const spacerBot = innerEl.createDiv();
-    spacerBot.style.cssText = 'position: absolute; left: 0; right: 0; pointer-events: none;';
+    applyCssText(spacerBot, 'position: absolute; left: 0; right: 0; pointer-events: none;');
 
     // ── State ─────────────────────────────────────────────────────────────────
     let items:        FeedConfig[] = [];
     let renderedStart = -1;
     let renderedEnd   = -1;
+    let cardHeight    = getFeedCardHeight();
 
     // ── Layout ────────────────────────────────────────────────────────────────
     // No card cache — cards are created on entry and destroyed on exit.
     // Caching kept all 400 elements in memory as you scrolled; without it,
     // only OVERSCAN*2 + viewport cards (~20) ever exist at once.
     const updateLayout = () => {
-        const totalHeight = items.length * CARD_HEIGHT;
+        cardHeight = getFeedCardHeight();
+        const totalHeight = items.length * cardHeight;
         innerEl.style.height = totalHeight + 'px';
 
         const scrollTop    = scrollEl.scrollTop;
         const viewHeight   = scrollEl.clientHeight || 520;
-        const firstVisible = Math.floor(scrollTop / CARD_HEIGHT);
-        const lastVisible  = Math.ceil((scrollTop + viewHeight) / CARD_HEIGHT);
+        const firstVisible = Math.floor(scrollTop / cardHeight);
+        const lastVisible  = Math.ceil((scrollTop + viewHeight) / cardHeight);
 
         const newStart = Math.max(0, firstVisible - OVERSCAN);
         const newEnd   = Math.min(items.length, lastVisible + OVERSCAN);
@@ -131,7 +153,7 @@ function createVirtualList(
             if (!feed) continue;
 
             const el = document.createElement('div');
-            el.style.cssText = `position:absolute;top:${i * CARD_HEIGHT}px;left:0;right:0;`;
+            applyCssText(el, `position:absolute;top:${i * cardHeight}px;left:0;right:0;`);
             renderCard(feed, el);
             itemsEl.appendChild(el);
         }
@@ -139,9 +161,9 @@ function createVirtualList(
         renderedStart = newStart;
         renderedEnd   = newEnd;
 
-        spacerTop.style.height = (newStart * CARD_HEIGHT) + 'px';
-        spacerBot.style.top    = (newEnd * CARD_HEIGHT) + 'px';
-        spacerBot.style.height = Math.max(0, (items.length - newEnd) * CARD_HEIGHT) + 'px';
+        spacerTop.style.height = (newStart * cardHeight) + 'px';
+        spacerBot.style.top    = (newEnd * cardHeight) + 'px';
+        spacerBot.style.height = Math.max(0, (items.length - newEnd) * cardHeight) + 'px';
     };
 
     // ── Throttled scroll handler ──────────────────────────────────────────────
@@ -160,6 +182,14 @@ function createVirtualList(
 
     const ro = new ResizeObserver(() => { updateLayout(); });
     ro.observe(scrollEl);
+
+    const mobileQuery = window.matchMedia('(max-width: 560px), (hover: none) and (pointer: coarse)');
+    const onMediaChange = () => {
+        renderedStart = -1;
+        renderedEnd   = -1;
+        updateLayout();
+    };
+    mobileQuery.addEventListener('change', onMediaChange);
 
     // ── Public API ────────────────────────────────────────────────────────────
     const setItems = (newItems: FeedConfig[]) => {
@@ -181,6 +211,7 @@ function createVirtualList(
 
     const destroy = () => {
         scrollEl.removeEventListener('scroll', onScroll);
+        mobileQuery.removeEventListener('change', onMediaChange);
         ro.disconnect();
     };
 
@@ -210,16 +241,16 @@ export function renderMyFeedsTab(
     let searchQuery: string = '';
     const selectedFeeds = new Set<string>();
 
-    const title = containerEl.createEl('div', { text: 'Manage Feeds' });
-    title.style.cssText = 'font-size: 1.1em; font-weight: 600; color: var(--text-normal); margin-bottom: 10px;';
+    const title = containerEl.createEl('div', { text: 'Manage feeds' });
+    applyCssText(title, 'font-size: 1.1em; font-weight: 600; color: var(--text-normal); margin-bottom: 10px;');
 
     // ── Tab filter bar ────────────────────────────────────────────────────────
     const filterRow = containerEl.createDiv();
-    filterRow.style.cssText = 'display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;';
+    applyCssText(filterRow, 'display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;');
 
     // ── Controls card ─────────────────────────────────────────────────────────
     const controlsCard = containerEl.createDiv();
-    controlsCard.style.cssText = `
+    applyCssText(controlsCard, `
         background: var(--background-secondary);
         border: 1px solid var(--background-modifier-border);
         border-radius: 10px;
@@ -230,7 +261,7 @@ export function renderMyFeedsTab(
         gap: 0;
         min-height: 52px;
         transition: border-color 0.15s ease;
-    `;
+    `);
 
     // ── Feed list ─────────────────────────────────────────────────────────────
     const listEl = containerEl.createDiv();
@@ -296,7 +327,7 @@ export function renderMyFeedsTab(
         if (visible.length === 0) {
             vlist.setItems([]);
             emptyEl = listEl.createEl('p', { text: 'No feeds in this category.' });
-            emptyEl.style.cssText = 'color: var(--text-muted); text-align: center; margin-top: 24px;';
+            applyCssText(emptyEl, 'color: var(--text-muted); text-align: center; margin-top: 24px;');
             return;
         }
 
@@ -319,9 +350,9 @@ export function renderMyFeedsTab(
             const hasSelection = selectedFeeds.size > 0;
 
             const cbWrap = controlsCard.createDiv();
-            cbWrap.style.cssText = CONTROL_WRAPPER_CSS;
+            applyCssText(cbWrap, CONTROL_WRAPPER_CSS);
             const cb = cbWrap.createEl('input', { type: 'checkbox' });
-            cb.style.cssText = CHECKBOX_CSS;
+            applyCssText(cb, CHECKBOX_CSS);
             cb.checked       = visibleFeeds.length > 0 && visibleFeeds.every((f: FeedConfig) => selectedFeeds.has(f.url));
             cb.indeterminate = hasSelection && !cb.checked;
             cb.title         = 'Select all';
@@ -336,34 +367,34 @@ export function renderMyFeedsTab(
             });
 
             const sep = controlsCard.createDiv();
-            sep.style.cssText = SEPARATOR_CSS;
+            applyCssText(sep, SEPARATOR_CSS);
 
             if (hasSelection) {
-                controlsCard.style.setProperty('border-color', 'var(--interactive-accent)');
+                controlsCard.setCssProps({ 'border-color': 'var(--interactive-accent)' });
 
                 const countEl = controlsCard.createSpan({ text: `${hasSelection ? selectedFeeds.size : 0} selected` });
-                countEl.style.cssText = 'font-size: 0.82em; font-weight: 600; color: var(--interactive-accent); padding: 0 4px;';
+                applyCssText(countEl, 'font-size: 0.82em; font-weight: 600; color: var(--interactive-accent); padding: 0 4px;');
 
                 const deselectBtn = controlsCard.createEl('button');
-                deselectBtn.style.cssText = 'display: flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.83em; background: transparent; color: var(--text-muted); transition: background 0.12s ease;';
-                deselectBtn.addEventListener('mouseenter', () => { deselectBtn.style.background = 'var(--background-modifier-hover)'; });
-                deselectBtn.addEventListener('mouseleave', () => { deselectBtn.style.background = 'transparent'; });
+                applyCssText(deselectBtn, 'display: flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.83em; background: transparent; color: var(--text-muted); transition: background 0.12s ease;');
+                deselectBtn.addEventListener('mouseenter', () => { deselectBtn.setCssProps({ background: 'var(--background-modifier-hover)' }); });
+                deselectBtn.addEventListener('mouseleave', () => { deselectBtn.setCssProps({ background: 'transparent' }); });
                 const xIcon = deselectBtn.createDiv();
-                xIcon.style.cssText = 'display: flex; align-items: center; width: 14px; height: 14px; flex-shrink: 0;';
+                applyCssText(xIcon, 'display: flex; align-items: center; width: 14px; height: 14px; flex-shrink: 0;');
                 setIcon(xIcon, 'x');
                 deselectBtn.createSpan({ text: 'Deselect' });
                 deselectBtn.addEventListener('click', () => { selectedFeeds.clear(); renderControlsCard(); rebuildList(); });
 
                 const sep2 = controlsCard.createDiv();
-                sep2.style.cssText = 'width: 1px; height: 22px; background: var(--background-modifier-border); margin: 0 16px; flex-shrink: 0;';
+                applyCssText(sep2, 'width: 1px; height: 22px; background: var(--background-modifier-border); margin: 0 16px; flex-shrink: 0;');
 
                 const restoreBtn = controlsCard.createEl('button');
-                restoreBtn.style.cssText = 'display: flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.83em; background: transparent; color: var(--text-normal); transition: background 0.12s ease;';
+                applyCssText(restoreBtn, 'display: flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.83em; background: transparent; color: var(--text-normal); transition: background 0.12s ease;');
                 restoreBtn.title = 'Restore selected';
-                restoreBtn.addEventListener('mouseenter', () => { restoreBtn.style.background = 'var(--background-modifier-hover)'; });
-                restoreBtn.addEventListener('mouseleave', () => { restoreBtn.style.background = 'transparent'; });
+                restoreBtn.addEventListener('mouseenter', () => { restoreBtn.setCssProps({ background: 'var(--background-modifier-hover)' }); });
+                restoreBtn.addEventListener('mouseleave', () => { restoreBtn.setCssProps({ background: 'transparent' }); });
                 const restoreIcon = restoreBtn.createDiv();
-                restoreIcon.style.cssText = 'display: flex; align-items: center; width: 15px; height: 15px; flex-shrink: 0;';
+                applyCssText(restoreIcon, 'display: flex; align-items: center; width: 15px; height: 15px; flex-shrink: 0;');
                 setIcon(restoreIcon, 'undo');
                 const restoreLabel = restoreBtn.createSpan({ text: 'Restore' });
                 const updateRestoreLabel = () => { restoreLabel.style.display = controlsCard.offsetWidth < 480 ? 'none' : ''; };
@@ -388,15 +419,15 @@ export function renderMyFeedsTab(
                 });
 
                 const sep3 = controlsCard.createDiv();
-                sep3.style.cssText = 'width: 1px; height: 22px; background: var(--background-modifier-border); margin: 0 8px; flex-shrink: 0;';
+                applyCssText(sep3, 'width: 1px; height: 22px; background: var(--background-modifier-border); margin: 0 8px; flex-shrink: 0;');
 
                 const delBtn = controlsCard.createEl('button');
-                delBtn.style.cssText = 'display: flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.83em; background: transparent; color: var(--color-red); transition: background 0.12s ease;';
+                applyCssText(delBtn, 'display: flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.83em; background: transparent; color: var(--color-red); transition: background 0.12s ease;');
                 delBtn.title = 'Delete permanently';
-                delBtn.addEventListener('mouseenter', () => { delBtn.style.background = 'var(--background-modifier-hover)'; });
-                delBtn.addEventListener('mouseleave', () => { delBtn.style.background = 'transparent'; });
+                delBtn.addEventListener('mouseenter', () => { delBtn.setCssProps({ background: 'var(--background-modifier-hover)' }); });
+                delBtn.addEventListener('mouseleave', () => { delBtn.setCssProps({ background: 'transparent' }); });
                 const delIcon = delBtn.createDiv();
-                delIcon.style.cssText = 'display: flex; align-items: center; width: 15px; height: 15px; flex-shrink: 0;';
+                applyCssText(delIcon, 'display: flex; align-items: center; width: 15px; height: 15px; flex-shrink: 0;');
                 setIcon(delIcon, 'trash');
                 const delLabel = delBtn.createSpan({ text: 'Delete permanently' });
 
@@ -426,16 +457,16 @@ export function renderMyFeedsTab(
             } else {
                 controlsCard.style.removeProperty('border-color');
                 const label = controlsCard.createSpan({ text: 'Select all' });
-                label.style.cssText = 'font-size: 0.82em; color: var(--text-muted);';
+                applyCssText(label, 'font-size: 0.82em; color: var(--text-muted);');
             }
 
             const spacer = controlsCard.createDiv();
-            spacer.style.cssText = 'flex: 1;';
+            applyCssText(spacer, 'flex: 1;');
             const iconEl = controlsCard.createDiv();
-            iconEl.style.cssText = 'display: flex; align-items: center; width: 14px; height: 14px; flex-shrink: 0; color: var(--color-orange);';
+            applyCssText(iconEl, 'display: flex; align-items: center; width: 14px; height: 14px; flex-shrink: 0; color: var(--color-orange);');
             setIcon(iconEl, 'clock');
             const msg = controlsCard.createSpan({ text: 'Auto-deleted after 15 days' });
-            msg.style.cssText = 'font-size: 0.78em; color: var(--text-muted); white-space: nowrap;';
+            applyCssText(msg, 'font-size: 0.78em; color: var(--text-muted); white-space: nowrap;');
             return;
         }
 
@@ -443,9 +474,9 @@ export function renderMyFeedsTab(
         const hasSelection = selectedFeeds.size > 0;
 
         const cbWrap = controlsCard.createDiv();
-        cbWrap.style.cssText = CONTROL_WRAPPER_CSS;
+        applyCssText(cbWrap, CONTROL_WRAPPER_CSS);
         const cb = cbWrap.createEl('input', { type: 'checkbox' });
-        cb.style.cssText = CHECKBOX_CSS;
+        applyCssText(cb, CHECKBOX_CSS);
         cb.checked       = visibleFeeds.length > 0 && visibleFeeds.every((f: FeedConfig) => selectedFeeds.has(f.url));
         cb.indeterminate = hasSelection && !cb.checked;
         cb.title         = 'Select all';
@@ -461,9 +492,9 @@ export function renderMyFeedsTab(
 
         if (hasSelection) {
             const tgWrap = controlsCard.createDiv();
-            tgWrap.style.cssText = CONTROL_WRAPPER_CSS;
+            applyCssText(tgWrap, CONTROL_WRAPPER_CSS);
             const toggleEl = tgWrap.createEl('div', { cls: 'checkbox-container' });
-            toggleEl.style.margin = '0';
+            toggleEl.setCssProps({ margin: '0' });
             const selList = plugin.settings.feeds.filter((f: FeedConfig) => selectedFeeds.has(f.url));
             const allOn   = selList.every((f: FeedConfig) => f.enabled);
             if (allOn) toggleEl.classList.add('is-enabled');
@@ -485,35 +516,35 @@ export function renderMyFeedsTab(
         }
 
         const sep = controlsCard.createDiv();
-        sep.style.cssText = SEPARATOR_CSS;
+        applyCssText(sep, SEPARATOR_CSS);
 
         if (hasSelection) {
-            controlsCard.style.setProperty('border-color', 'var(--interactive-accent)');
+            controlsCard.setCssProps({ 'border-color': 'var(--interactive-accent)' });
 
             const countEl = controlsCard.createSpan({ text: `${selectedFeeds.size} selected` });
-            countEl.style.cssText = 'font-size: 0.82em; font-weight: 600; color: var(--interactive-accent); padding: 0 4px;';
+            applyCssText(countEl, 'font-size: 0.82em; font-weight: 600; color: var(--interactive-accent); padding: 0 4px;');
 
             const deselectBtn = controlsCard.createEl('button');
-            deselectBtn.style.cssText = 'display: flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.83em; background: transparent; color: var(--text-muted); transition: background 0.12s ease;';
-            deselectBtn.addEventListener('mouseenter', () => { deselectBtn.style.background = 'var(--background-modifier-hover)'; });
-            deselectBtn.addEventListener('mouseleave', () => { deselectBtn.style.background = 'transparent'; });
+            applyCssText(deselectBtn, 'display: flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.83em; background: transparent; color: var(--text-muted); transition: background 0.12s ease;');
+            deselectBtn.addEventListener('mouseenter', () => { deselectBtn.setCssProps({ background: 'var(--background-modifier-hover)' }); });
+            deselectBtn.addEventListener('mouseleave', () => { deselectBtn.setCssProps({ background: 'transparent' }); });
             const xIcon = deselectBtn.createDiv();
-            xIcon.style.cssText = 'display: flex; align-items: center; width: 14px; height: 14px; flex-shrink: 0;';
+            applyCssText(xIcon, 'display: flex; align-items: center; width: 14px; height: 14px; flex-shrink: 0;');
             setIcon(xIcon, 'x');
             deselectBtn.createSpan({ text: 'Deselect' });
             deselectBtn.addEventListener('click', () => { selectedFeeds.clear(); renderControlsCard(); rebuildList(); });
 
             const sep2 = controlsCard.createDiv();
-            sep2.style.cssText = 'width: 1px; height: 22px; background: var(--background-modifier-border); margin: 0 16px; flex-shrink: 0;';
+            applyCssText(sep2, 'width: 1px; height: 22px; background: var(--background-modifier-border); margin: 0 16px; flex-shrink: 0;');
 
-            const addActionBtn = (icon: string, label: string, onClick: () => void) => {
+            const addActionBtn = (icon: string, label: string, onClick: () => void | Promise<void>) => {
                 const btn = controlsCard.createEl('button');
-                btn.style.cssText = 'display: flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.83em; background: transparent; color: var(--text-normal); transition: background 0.12s ease; margin-left: 4px;';
+                applyCssText(btn, 'display: flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.83em; background: transparent; color: var(--text-normal); transition: background 0.12s ease; margin-left: 4px;');
                 btn.title = label;
-                btn.addEventListener('mouseenter', () => { btn.style.background = 'var(--background-modifier-hover)'; });
-                btn.addEventListener('mouseleave', () => { btn.style.background = 'transparent'; });
+                btn.addEventListener('mouseenter', () => { btn.setCssProps({ background: 'var(--background-modifier-hover)' }); });
+                btn.addEventListener('mouseleave', () => { btn.setCssProps({ background: 'transparent' }); });
                 const iconEl = btn.createDiv();
-                iconEl.style.cssText = 'display: flex; align-items: center; width: 15px; height: 15px; flex-shrink: 0;';
+                applyCssText(iconEl, 'display: flex; align-items: center; width: 15px; height: 15px; flex-shrink: 0;');
                 setIcon(iconEl, icon);
                 const labelEl = btn.createSpan({ text: label });
 
@@ -525,7 +556,7 @@ export function renderMyFeedsTab(
                 const roCleanup = new MutationObserver(() => { ro.disconnect(); roCleanup.disconnect(); });
                 roCleanup.observe(controlsCard, { childList: true });
 
-                btn.addEventListener('click', onClick);
+                btn.addEventListener('click', () => { void onClick(); });
                 return btn;
             };
 
@@ -570,7 +601,7 @@ export function renderMyFeedsTab(
             }
 
             const spacer = controlsCard.createDiv();
-            spacer.style.cssText = 'flex: 1;';
+            applyCssText(spacer, 'flex: 1;');
 
             addActionBtn('sliders-horizontal', 'Multi Edit', () => {
                 openBulkEditModal(app, plugin, selectedFeeds, () => { selectedFeeds.clear(); fullRefresh(); });
@@ -578,15 +609,15 @@ export function renderMyFeedsTab(
 
         } else {
             const label = controlsCard.createSpan({ text: 'Select all' });
-            label.style.cssText = 'font-size: 0.82em; color: var(--text-muted);';
+            applyCssText(label, 'font-size: 0.82em; color: var(--text-muted);');
 
             const spacer = controlsCard.createDiv();
-            spacer.style.cssText = 'flex: 1;';
+            applyCssText(spacer, 'flex: 1;');
 
             const editFoldersBtn = controlsCard.createEl('button');
-            editFoldersBtn.style.cssText = 'display: flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 6px; font-size: 0.85em; cursor: pointer; border: 1px solid var(--background-modifier-border); background: transparent; color: var(--text-muted); transition: all 0.15s ease;';
+            applyCssText(editFoldersBtn, 'display: flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 6px; font-size: 0.85em; cursor: pointer; border: 1px solid var(--background-modifier-border); background: transparent; color: var(--text-muted); transition: all 0.15s ease;');
             const editFoldersIcon = editFoldersBtn.createDiv();
-            editFoldersIcon.style.cssText = 'display: flex; align-items: center; width: 14px; height: 14px;';
+            applyCssText(editFoldersIcon, 'display: flex; align-items: center; width: 14px; height: 14px;');
             setIcon(editFoldersIcon, 'folder-edit');
             editFoldersBtn.createSpan({ text: 'Edit Folders' });
             editFoldersBtn.addEventListener('click', () => {
@@ -609,16 +640,16 @@ export function renderMyFeedsTab(
 
     // ── Search bar ────────────────────────────────────────────────────────────
     const searchWrap = filterRow.createDiv();
-    searchWrap.style.cssText = 'display: flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 20px; border: 1px solid var(--background-modifier-border); background: transparent; transition: border-color 0.15s ease; margin-left: 2px; flex: 1;';
+    applyCssText(searchWrap, 'display: flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 20px; border: 1px solid var(--background-modifier-border); background: transparent; transition: border-color 0.15s ease; margin-left: 2px; flex: 1;');
     const searchIcon = searchWrap.createDiv();
-    searchIcon.style.cssText = 'display: flex; align-items: center; width: 13px; height: 13px; flex-shrink: 0; opacity: 0.5;';
+    applyCssText(searchIcon, 'display: flex; align-items: center; width: 13px; height: 13px; flex-shrink: 0; opacity: 0.5;');
     setIcon(searchIcon, 'search');
     const searchInput = searchWrap.createEl('input', { type: 'text' });
     searchInput.placeholder = 'Search feeds…';
-    searchInput.style.cssText = 'border: none; background: transparent; outline: none; font-size: 0.82em; color: var(--text-normal); width: 100%; line-height: 1; height: 18px;';
-    searchWrap.addEventListener('focusin', () => { searchWrap.style.borderColor = 'var(--interactive-accent)'; });
+    applyCssText(searchInput, 'border: none; background: transparent; outline: none; font-size: 0.82em; color: var(--text-normal); width: 100%; line-height: 1; height: 18px;');
+    searchWrap.addEventListener('focusin', () => { searchWrap.setCssProps({ 'border-color': 'var(--interactive-accent)' }); });
     searchWrap.addEventListener('focusout', () => {
-        searchWrap.style.borderColor = searchQuery ? 'var(--interactive-accent)' : 'var(--background-modifier-border)';
+        searchWrap.setCssProps({ 'border-color': searchQuery ? 'var(--interactive-accent)' : 'var(--background-modifier-border)' });
     });
     const debouncedSearch = debounce(() => {
         selectedFeeds.clear();
@@ -660,11 +691,11 @@ function renderStatusFilterBar(
         const isActive = key === getFilter();
         const btn = containerEl.createEl('button');
         btn.setText(label);
-        btn.style.cssText = `${BASE_TAB} ${isActive ? ACTIVE_TAB : INACTIVE_TAB}`;
+        applyCssText(btn, `${BASE_TAB} ${isActive ? ACTIVE_TAB : INACTIVE_TAB}`);
         buttons.push(btn);
         btn.addEventListener('click', () => {
-            buttons.forEach(b => { b.style.cssText = `${BASE_TAB} ${INACTIVE_TAB}`; });
-            btn.style.cssText = `${BASE_TAB} ${ACTIVE_TAB}`;
+            buttons.forEach(b => { applyCssText(b, `${BASE_TAB} ${INACTIVE_TAB}`); });
+            applyCssText(btn, `${BASE_TAB} ${ACTIVE_TAB}`);
             onFilter(key);
         });
     }
@@ -689,7 +720,7 @@ function renderFeedCard(
     const isDeleted  = status === 'deleted';
 
     const cardEl = feedsContainer.createDiv();
-    cardEl.style.cssText = `
+    applyCssText(cardEl, `
         background: var(--background-secondary);
         border: 1px solid var(--background-modifier-border);
         border-radius: 10px;
@@ -703,10 +734,11 @@ function renderFeedCard(
         gap: 0;
         ${isArchived ? 'opacity: 0.7;' : ''}
         ${isDeleted  ? 'opacity: 0.5;' : ''}
-    `;
+    `);
     cardEl.classList.add('rss-card-setting');
-    cardEl.onmouseenter = () => { cardEl.style.borderColor = 'var(--interactive-accent)'; };
-    cardEl.onmouseleave = () => { cardEl.style.borderColor = 'var(--background-modifier-border)'; };
+    cardEl.classList.add('rss-feed-card');
+    cardEl.onmouseenter = () => { cardEl.setCssProps({ 'border-color': 'var(--interactive-accent)' }); };
+    cardEl.onmouseleave = () => { cardEl.setCssProps({ 'border-color': 'var(--background-modifier-border)' }); };
 
     cardEl.dataset.feedUrl     = feed.url;
     cardEl.dataset.feedStatus  = status;
@@ -714,10 +746,11 @@ function renderFeedCard(
     cardEl.dataset.feedEnabled = String(feed.enabled);
 
     const checkboxWrapper = cardEl.createDiv();
-    checkboxWrapper.style.cssText = CONTROL_WRAPPER_CSS;
+    checkboxWrapper.classList.add('rss-feed-card-select');
+    applyCssText(checkboxWrapper, CONTROL_WRAPPER_CSS);
     const checkbox = checkboxWrapper.createEl('input', { type: 'checkbox' });
     checkbox.checked = selectedFeeds.has(feed.url);
-    checkbox.style.cssText = CHECKBOX_CSS;
+    applyCssText(checkbox, CHECKBOX_CSS);
     checkbox.addEventListener('change', () => {
         if (checkbox.checked) selectedFeeds.add(feed.url);
         else selectedFeeds.delete(feed.url);
@@ -725,9 +758,10 @@ function renderFeedCard(
     });
 
     const toggleWrapper = cardEl.createDiv();
-    toggleWrapper.style.cssText = CONTROL_WRAPPER_CSS;
+    toggleWrapper.classList.add('rss-feed-card-toggle');
+    applyCssText(toggleWrapper, CONTROL_WRAPPER_CSS);
     const toggleEl = toggleWrapper.createEl('div', { cls: 'checkbox-container' });
-    toggleEl.style.margin = '0';
+    toggleEl.setCssProps({ margin: '0' });
     if (feed.enabled) toggleEl.classList.add('is-enabled');
     toggleEl.addEventListener('click', () => {
         void (async () => {
@@ -746,42 +780,46 @@ function renderFeedCard(
     });
 
     const separator = cardEl.createDiv();
-    separator.style.cssText = SEPARATOR_CSS;
+    separator.classList.add('rss-feed-card-separator');
+    applyCssText(separator, SEPARATOR_CSS);
 
     const infoEl = cardEl.createDiv();
-    infoEl.style.cssText = 'flex: 1 1 auto; min-width: 0; margin: 0; padding: 0;';
+    infoEl.classList.add('rss-feed-card-info');
+    applyCssText(infoEl, 'flex: 1 1 auto; min-width: 0; margin: 0; padding: 0;');
     const nameEl = infoEl.createDiv({ text: feed.name || 'Untitled Feed' });
-    nameEl.style.cssText = 'font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.95em;';
+    nameEl.classList.add('rss-feed-card-name');
+    applyCssText(nameEl, 'font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.95em;');
 
     const controlEl = cardEl.createDiv();
-    controlEl.style.cssText = 'display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin-left: 12px;';
+    controlEl.classList.add('rss-feed-card-actions');
+    applyCssText(controlEl, 'display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin-left: 12px;');
 
     // ── Delete Lives badge ────────────────────────────────────────────────────
     if (!isDeleted && feed.deleteLives) {
         const livesBadge = controlEl.createDiv();
-        livesBadge.title = 'Delete Lives: on';
-        livesBadge.style.cssText = `
+        livesBadge.title = 'Delete lives: on';
+        applyCssText(livesBadge, `
             position: relative;
             display: flex; align-items: center; justify-content: center;
             width: 24px; height: 24px; flex-shrink: 0;
             opacity: 0.85; transition: opacity 0.12s ease;
-        `;
-        livesBadge.onmouseenter = () => { livesBadge.style.opacity = '1'; };
-        livesBadge.onmouseleave = () => { livesBadge.style.opacity = '0.85'; };
+        `);
+        livesBadge.onmouseenter = () => { livesBadge.setCssProps({ opacity: '1' }); };
+        livesBadge.onmouseleave = () => { livesBadge.setCssProps({ opacity: '0.85' }); };
 
         const radioEl = livesBadge.createDiv();
-        radioEl.style.cssText = 'display: flex; align-items: center; width: 18px; height: 18px; color: var(--text-muted);';
+        applyCssText(radioEl, 'display: flex; align-items: center; width: 18px; height: 18px; color: var(--text-muted);');
         setIcon(radioEl, 'radio');
 
         const banEl = livesBadge.createDiv();
-        banEl.style.cssText = `
+        applyCssText(banEl, `
             position: absolute; bottom: 0; right: -2px;
             display: flex; align-items: center;
             width: 13px; height: 13px;
             color: var(--color-red);
             background: var(--background-secondary);
             border-radius: 50%;
-        `;
+        `);
         setIcon(banEl, 'ban');
     }
 
@@ -796,28 +834,28 @@ function renderFeedCard(
             skipBadge.title = feed.skipShorts === true
                 ? 'Skip Shorts: on (per-feed)'
                 : 'Skip Shorts: on (global)';
-            skipBadge.style.cssText = `
+            applyCssText(skipBadge, `
                 position: relative;
                 display: flex; align-items: center; justify-content: center;
                 width: 24px; height: 24px; flex-shrink: 0;
                 opacity: 0.85; transition: opacity 0.12s ease;
-            `;
-            skipBadge.onmouseenter = () => { skipBadge.style.opacity = '1'; };
-            skipBadge.onmouseleave = () => { skipBadge.style.opacity = '0.85'; };
+            `);
+            skipBadge.onmouseenter = () => { skipBadge.setCssProps({ opacity: '1' }); };
+            skipBadge.onmouseleave = () => { skipBadge.setCssProps({ opacity: '0.85' }); };
 
             const phoneEl = skipBadge.createDiv();
-            phoneEl.style.cssText = 'display: flex; align-items: center; width: 18px; height: 18px; color: var(--text-muted);';
+            applyCssText(phoneEl, 'display: flex; align-items: center; width: 18px; height: 18px; color: var(--text-muted);');
             setIcon(phoneEl, 'smartphone');
 
             const banEl = skipBadge.createDiv();
-            banEl.style.cssText = `
+            applyCssText(banEl, `
                 position: absolute; bottom: 0; right: -2px;
                 display: flex; align-items: center;
                 width: 13px; height: 13px;
                 color: var(--color-red);
                 background: var(--background-secondary);
                 border-radius: 50%;
-            `;
+            `);
             setIcon(banEl, 'ban');
         }
     }
@@ -826,17 +864,17 @@ function renderFeedCard(
     if (!isDeleted && groups.length > 0) {
         const currentGroup = groups.find(g => g.id === feed.groupId);
         const badge = controlEl.createDiv({ text: currentGroup?.name ?? '— folder —' });
-        badge.style.cssText = `
+        applyCssText(badge, `
             font-size: 0.78em; color: var(--text-muted);
             background: var(--background-modifier-hover);
             border: 1px solid var(--background-modifier-border);
             border-radius: 4px; padding: 3px 8px;
             white-space: nowrap; flex-shrink: 0; cursor: pointer;
             transition: border-color 0.12s ease;
-        `;
+        `);
         badge.title = 'Change folder';
-        badge.onmouseenter = () => { badge.style.borderColor = 'var(--interactive-accent)'; };
-        badge.onmouseleave = () => { badge.style.borderColor = 'var(--background-modifier-border)'; };
+        badge.onmouseenter = () => { badge.setCssProps({ 'border-color': 'var(--interactive-accent)' }); };
+        badge.onmouseleave = () => { badge.setCssProps({ 'border-color': 'var(--background-modifier-border)' }); };
 
         badge.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -844,20 +882,20 @@ function renderFeedCard(
             if (existing) { existing.remove(); return; }
 
             const pop = document.body.createDiv({ cls: 'rss-folder-popover' });
-            pop.style.cssText = `
+            applyCssText(pop, `
                 position: fixed; z-index: 9999;
                 background: var(--background-primary);
                 border: 1px solid var(--background-modifier-border);
                 border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.3);
                 padding: 4px; min-width: 160px;
-            `;
+            `);
 
             const addOpt = (label: string, val: string) => {
                 const item = pop.createDiv({ text: label });
                 const isCur = val === (feed.groupId ?? '');
-                item.style.cssText = `padding: 6px 10px; border-radius: 5px; cursor: pointer; font-size: 0.85em; color: ${isCur ? 'var(--text-normal)' : 'var(--text-muted)'}; font-weight: ${isCur ? '500' : '400'};`;
-                item.onmouseenter = () => { item.style.background = 'var(--background-modifier-hover)'; item.style.color = 'var(--text-normal)'; };
-                item.onmouseleave = () => { item.style.background = 'transparent'; };
+                applyCssText(item, `padding: 6px 10px; border-radius: 5px; cursor: pointer; font-size: 0.85em; color: ${isCur ? 'var(--text-normal)' : 'var(--text-muted)'}; font-weight: ${isCur ? '500' : '400'};`);
+                item.onmouseenter = () => { item.setCssProps({ background: 'var(--background-modifier-hover)' }); item.setCssProps({ color: 'var(--text-normal)' }); };
+                item.onmouseleave = () => { item.setCssProps({ background: 'transparent' }); };
                 item.addEventListener('pointerdown', (ev) => {
                     void (async () => {
                     ev.preventDefault();
@@ -898,18 +936,18 @@ function renderFeedCard(
 
     if (!isDeleted && groups.length > 0) {
         const btnSep = controlEl.createDiv();
-        btnSep.style.cssText = 'width: 1px; height: 20px; background: var(--background-modifier-border); flex-shrink: 0;';
+        applyCssText(btnSep, 'width: 1px; height: 20px; background: var(--background-modifier-border); flex-shrink: 0;');
     }
 
     // ── Button helper ─────────────────────────────────────────────────────────
     const addBtn = (icon: string, tooltip: string, color?: string): HTMLButtonElement => {
         const btn = controlEl.createEl('button');
         btn.title = tooltip;
-        btn.style.cssText = `display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 6px; border: none; background: transparent; cursor: pointer; color: ${color ?? 'var(--text-normal)'}; transition: background 0.12s ease;`;
-        btn.addEventListener('mouseenter', () => { btn.style.background = 'var(--background-modifier-hover)'; });
-        btn.addEventListener('mouseleave', () => { btn.style.background = 'transparent'; });
+        applyCssText(btn, `display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 6px; border: none; background: transparent; cursor: pointer; color: ${color ?? 'var(--text-normal)'}; transition: background 0.12s ease;`);
+        btn.addEventListener('mouseenter', () => { btn.setCssProps({ background: 'var(--background-modifier-hover)' }); });
+        btn.addEventListener('mouseleave', () => { btn.setCssProps({ background: 'transparent' }); });
         const iconEl = btn.createDiv();
-        iconEl.style.cssText = 'display: flex; align-items: center; width: 18px; height: 18px;';
+        applyCssText(iconEl, 'display: flex; align-items: center; width: 18px; height: 18px;');
         setIcon(iconEl, icon);
         return btn;
     };
@@ -926,8 +964,8 @@ function renderFeedCard(
 
             // Spin the icon while updating
             const iconEl = updateBtn.querySelector('div') as HTMLElement;
-            iconEl.style.transition = 'transform 0.6s linear';
-            iconEl.style.transform  = 'rotate(360deg)';
+            iconEl.setCssProps({ transition: 'transform 0.6s linear' });
+            iconEl.setCssProps({ transform: 'rotate(360deg)' });
             updateBtn.disabled = true;
 
             try {
@@ -937,8 +975,8 @@ function renderFeedCard(
                 console.error(`RSS: Manual update failed for "${feed.name}":`, e);
                 new Notice(`Update failed for "${feed.name}".`);
             } finally {
-                iconEl.style.transition = '';
-                iconEl.style.transform  = '';
+                iconEl.setCssProps({ transition: '' });
+                iconEl.setCssProps({ transform: '' });
                 updateBtn.disabled = false;
             }
             })();

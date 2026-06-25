@@ -115,7 +115,7 @@ export async function tagDuplicatesInVault(app: App, plugin: RssPlugin, fileCach
                         plugin.settings.markAsReadEnabled,
                         file.basename,
                     );
-                    console.log(`RSS: deleted duplicate file "${file.path}"`);
+                    console.debug(`RSS: deleted duplicate file "${file.path}"`);
                     processed++;
 
                     if (fileCache) {

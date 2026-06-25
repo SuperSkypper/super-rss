@@ -1,11 +1,9 @@
-import { App, Vault, normalizePath } from 'obsidian';
+import { App, MetadataCache, Vault, normalizePath } from 'obsidian';
 import { FeedItem, FeedConfig, FrontmatterPropertyTemplate, PluginSettings } from '../main';
 import { sanitizeFileName } from './feedProcessor';
 import { downloadImageLocally, resolveObsidianAttachmentPath } from './imageHandler';
-import { buildMarkAsReadLink } from './feedMarkAsRead';
 import { injectDuplicateTag } from './feedDuplicate';
-import { loadCombinedDatabase, loadAutoDatabase, loadUserDatabase, saveAutoDatabase, saveUserDatabase, registerAuto, isKnown, getStatus, AutoDatabase, UserDatabase } from './feedDatabase';
-import { cleanupOldFiles, deleteOrphanedDbArticles } from './feedDelete';
+import { loadAutoDatabase, loadUserDatabase, saveAutoDatabase, saveUserDatabase, registerAuto, isKnown, getStatus, AutoDatabase, UserDatabase } from './feedDatabase';
 export { cleanupOldFiles, deleteOrphanedDbArticles } from './feedDelete';
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
@@ -225,30 +223,14 @@ export async function saveFeedItem(
     const contentTemplate = feed.contentTemplate || settings.template;
     const processedBody   = applyTemplate(contentTemplate, item, false, false, feedName, dateSaved);
 
-    // ── Mark as Read frontmatter property ───────────────────────────────────
-    // Injects the obsidian:// link into the frontmatter as a quoted string.
-    // If the property already exists (e.g. as a checkbox), its value is replaced
-    // so the link renders correctly. If absent, a new line is appended.
-    // The value is YAML-quoted to handle parentheses and special characters.
-    const markAsReadLink = buildMarkAsReadLink(filePath, settings);
-    if (markAsReadLink) {
-        const propertyName  = settings.markAsReadLinkProperty?.trim() || 'Mark as Read';
-        const yamlLine      = `${propertyName}: "${markAsReadLink.replace(/"/g, '\\"')}"`;
-        const propertyRegex = new RegExp(`^${propertyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:.*$`, 'mi');
-        if (propertyRegex.test(processedFrontmatter)) {
-            processedFrontmatter = processedFrontmatter.replace(propertyRegex, yamlLine);
-        } else {
-            processedFrontmatter = `${processedFrontmatter.trimEnd()}\n${yamlLine}`;
-        }
-    }
-
     const finalContent = `---\n${processedFrontmatter}\n---\n\n${processedBody}`;
     try {
         await vault.create(filePath, finalContent);
-    } catch (e: any) {
+    } catch (e: unknown) {
         // Another concurrent update already created this file — treat as success.
         // Any other error is re-thrown so the caller knows the save failed.
-        if (!String(e?.message ?? '').toLowerCase().includes('already exists')) {
+        const message = e instanceof Error ? e.message : String(e);
+        if (!message.toLowerCase().includes('already exists')) {
             throw e;
         }
     }
@@ -270,10 +252,11 @@ function resolveImageFolder(app: App, settings: PluginSettings, feedFolderPath: 
             return '';
         case 'current':
             return feedFolderPath;
-        case 'subfolder':
+        case 'subfolder': {
             const subName = settings.imagesFolder || 'attachments';
             if (settings.useFeedFolder) return normalizePath(`${feedFolderPath}/${subName}`);
             return normalizePath(`${baseRSSFolder}/${subName}`);
+        }
         case 'specified':
             return normalizePath(settings.imagesFolder || 'attachments');
         default:
@@ -343,18 +326,27 @@ function formatImageForContent(imageUrl: string): string {
     return `![](${imageUrl})`;
 }
 
-function escapeYamlValue(value: any): string {
+function escapeYamlValue(value: unknown): string {
     if (value === null || value === undefined) return '';
     if (typeof value === 'boolean' || typeof value === 'number') return String(value);
-    return String(value).replace(/"/g, '\\"');
+    if (typeof value === 'string') return value.replace(/"/g, '\\"');
+    return '';
 }
 
 function quoteYamlString(value: string): string {
     return `"${escapeYamlValue(value)}"`;
 }
 
+interface PropertyInfo {
+    type?: string;
+}
+
+interface MetadataCacheWithPropertyInfos extends MetadataCache {
+    getAllPropertyInfos?: () => Record<string, PropertyInfo>;
+}
+
 function getKnownPropertyType(app: App, name: string): string | undefined {
-    const propertyInfos = (app.metadataCache as any).getAllPropertyInfos?.();
+    const propertyInfos = (app.metadataCache as MetadataCacheWithPropertyInfos).getAllPropertyInfos?.();
     if (!propertyInfos || typeof propertyInfos !== 'object') return undefined;
 
     const direct = propertyInfos[name]?.type;
@@ -480,12 +472,13 @@ export function applyTemplate(
             ? formatImageForFrontmatter(String(item.imageUrl ?? ''))
             : formatImageForContent(String(item.imageUrl ?? ''));
 
-    const sanitize = (val: any): string => {
+    const sanitize = (val: unknown): string => {
         if (val === null || val === undefined) return '';
         if (!isYaml) {
             if (typeof val === 'boolean') return val ? 'true' : 'false';
             if (typeof val === 'number') return String(val);
-            return String(val);
+            if (typeof val === 'string') return val;
+            return '';
         }
         return escapeYamlValue(val);
     };
@@ -534,14 +527,16 @@ export function applyTemplate(
         .replace(/{{tags}}/g,          tags)
         .replace(/{{#tags}}/g,         tags);             // backward compat
 
-    result = result.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => {
+    const itemValues = item as unknown as Record<string, unknown>;
+    result = result.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match: string, key: string) => {
         if (KNOWN_PLACEHOLDERS.has(key.toLowerCase())) return '';
-        const value = (item as any)[key];
+        const value = itemValues[key];
         if (value === null || value === undefined) return '';
         if (typeof value === 'boolean') return value ? 'true' : 'false';
         if (typeof value === 'number') return String(value);
         if (Array.isArray(value)) return value.map(x => escapeYamlValue(x)).join(', ');
-        return isYaml ? escapeYamlValue(value) : String(value);
+        if (typeof value === 'string') return isYaml ? escapeYamlValue(value) : value;
+        return '';
     });
 
     return result;

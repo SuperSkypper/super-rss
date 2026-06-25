@@ -1,4 +1,4 @@
-import { Setting, Modal, App, Notice } from 'obsidian';
+import { Setting, Notice } from 'obsidian';
 import RssPlugin from '../main';
 import { purgeEntriesByStatus, ArticleStatus } from './feedDatabase';
 
@@ -8,6 +8,12 @@ type ImageLocation = 'obsidian' | 'vault' | 'current' | 'subfolder' | 'specified
 type DeleteBehavior = 'obsidian' | 'direct' | 'obsidian-trash' | 'system-trash';
 type IntervalUnit = 'minutes' | 'hours' | 'days' | 'months';
 type CleanupDateField = 'datesaved' | 'datepub';
+
+interface AppWithSettings {
+    setting: {
+        openTabById(id: string): void;
+    };
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -36,12 +42,12 @@ function parsePositiveInt(v: string, fallback: number): number {
     return Math.floor(n);
 }
 
-function debounce<T extends (...args: any[]) => void | Promise<void>>(
+function debounce<T extends (...args: unknown[]) => void | Promise<void>>(
     fn: T,
     ms: number
 ): (...args: Parameters<T>) => void {
     let timer: ReturnType<typeof setTimeout>;
-    return ((...args: any[]) => {
+    return ((...args: unknown[]) => {
         clearTimeout(timer);
         timer = setTimeout(() => {
             void fn(...args);
@@ -56,8 +62,10 @@ function saveSettings(plugin: RssPlugin): void {
 }
 
 function applyIndent(settingEl: HTMLElement, level: 1 | 2 = 1): void {
-    settingEl.style.marginLeft = level === 2 ? '40px' : '20px';
-    settingEl.style.borderLeft = '3px solid var(--interactive-accent)';
+    settingEl.setCssProps({
+        'margin-left': level === 2 ? '40px' : '20px',
+        'border-left': '3px solid var(--interactive-accent)',
+    });
 }
 
 // ─── Tab renderer ─────────────────────────────────────────────────────────────
@@ -84,37 +92,25 @@ export function renderGeneralTab(
         });
     };
 
-    const isEnabled = plugin.settings.pluginEnabled ?? false;
+    const isEnabled = plugin.isAutoUpdateEnabled();
 
     // ── Setup instructions ────────────────────────────────────────────────────
 
-    const setupCard = contentEl.createDiv();
-    setupCard.style.cssText = `
-        background: var(--background-secondary);
-        border: 1px solid var(--background-modifier-border);
-        border-radius: 10px;
-        padding: 16px 18px;
-        margin-bottom: 20px;
-        transition: border-color 0.2s ease;
-    `;
+    const setupCard = contentEl.createDiv({ cls: 'super-rss-setup-card' });
 
-    const setupHeader = setupCard.createDiv();
-    setupHeader.style.cssText = 'display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;';
+    const setupHeader = setupCard.createDiv({ cls: 'super-rss-setup-header' });
 
-    const setupText = setupHeader.createDiv();
-    setupText.style.cssText = 'flex: 1; min-width: 0;';
+    const setupText = setupHeader.createDiv({ cls: 'super-rss-setup-text' });
 
-    const setupTitle = setupText.createEl('div', { text: '⚙️ Setup instructions' });
-    setupTitle.style.cssText = 'font-weight: 600; font-size: 0.95em; margin-bottom: 6px; color: var(--text-normal);';
+    setupText.createEl('div', { text: 'Setup instructions', cls: 'super-rss-setup-title' });
 
-    const setupDesc = setupText.createEl('div');
-    setupDesc.style.cssText = 'font-size: 0.85em; color: var(--text-muted); line-height: 1.6;';
-    setupDesc.setText('Configure the plugin below. Make sure to set your RSS folder and add feeds in My Feeds.');
+    const setupDesc = setupText.createEl('div', { cls: 'super-rss-setup-description' });
+    setupDesc.setText('Configure the plugin below. Make sure to set your RSS folder and add feeds in the feeds tab.');
 
     // ── RSS Folder (No Storage H3) ────────────────────────────────────────────
 
     const folderSetting = new Setting(contentEl)
-        .setName('RSS Folder')
+        .setName('RSS folder')
         .setDesc('Base folder where articles will be saved.')
         .addText(text => {
             text.setPlaceholder('RSS')
@@ -123,7 +119,7 @@ export function renderGeneralTab(
                     plugin.settings.folderPath = sanitizeFolderPath(value, 'RSS');
                     saveSettings(plugin);
                 }, 500));
-            text.inputEl.style.fontSize = '16px';
+            text.inputEl.setCssProps({ 'font-size': '16px' });
             text.inputEl.autocapitalize = 'off';
             text.inputEl.autocomplete = 'off';
             text.inputEl.spellcheck = false;
@@ -132,23 +128,22 @@ export function renderGeneralTab(
 
     // ── Auto Update ───────────────────────────────────────────────────────────
 
-    contentEl.createEl('h3', { text: 'Auto Update' });
+    contentEl.createEl('h3', { text: 'Auto update' });
 
     const autoUpdateSetting = new Setting(contentEl)
-        .setName('Enable Auto Update')
-        .setDesc('Automatically fetch articles from feeds in the background.')
+        .setName('Enable auto update')
+        .setDesc('Automatically fetch articles from feeds in the background on this device.')
         .addToggle(toggle => toggle
             .setValue(isEnabled)
-            .onChange((v) => {
-                plugin.settings.pluginEnabled = v;
-                saveSettings(plugin);
+            .onChange(async (v) => {
+                await plugin.setAutoUpdateEnabled(v);
                 rerender();
             }));
     applyCardStyle(autoUpdateSetting);
 
     if (isEnabled) {
         const intervalSetting = new Setting(contentEl)
-            .setName('Update Interval')
+            .setName('Update interval')
             .setDesc('How often feeds should be automatically checked.')
             .addText(text => {
                 text.setPlaceholder('30')
@@ -157,7 +152,7 @@ export function renderGeneralTab(
                         plugin.settings.updateIntervalValue = parsePositiveInt(v, 30);
                         saveSettings(plugin);
                     }, 500));
-                text.inputEl.style.fontSize = '16px';
+                text.inputEl.setCssProps({ 'font-size': '16px' });
                 text.inputEl.inputMode = 'numeric';
                 text.inputEl.autocapitalize = 'off';
                 text.inputEl.autocomplete = 'off';
@@ -177,12 +172,12 @@ export function renderGeneralTab(
 
     // ── Auto Delete ───────────────────────────────────────────────────────────
 
-    contentEl.createEl('h3', { text: 'Auto Delete' });
+    contentEl.createEl('h3', { text: 'Auto delete' });
 
     const autoDeleteEnabled = plugin.settings.autoCleanupValue != null && plugin.settings.autoCleanupValue > 0;
 
     const autoDeleteToggle = new Setting(contentEl)
-        .setName('Auto Delete Old Articles')
+        .setName('Auto delete old articles')
         .setDesc('Automatically delete old vault articles.')
         .addToggle(toggle => toggle
             .setValue(autoDeleteEnabled)
@@ -195,7 +190,7 @@ export function renderGeneralTab(
 
     if (autoDeleteEnabled) {
         const cleanupSetting = new Setting(contentEl)
-            .setName('Delete Articles Older Than')
+            .setName('Delete articles older than')
             .setDesc('Threshold age before an article is safely deleted.')
             .addText(text => {
                 text.setPlaceholder('30')
@@ -204,7 +199,7 @@ export function renderGeneralTab(
                         plugin.settings.autoCleanupValue = parsePositiveInt(v, 30);
                         saveSettings(plugin);
                     }, 500));
-                text.inputEl.style.fontSize = '16px';
+                text.inputEl.setCssProps({ 'font-size': '16px' });
                 text.inputEl.inputMode = 'numeric';
                 text.inputEl.autocapitalize = 'off';
                 text.inputEl.autocomplete = 'off';
@@ -222,11 +217,11 @@ export function renderGeneralTab(
         applyIndent(cleanupSetting.settingEl);
 
         const cleanupDateFieldSetting = new Setting(contentEl)
-            .setName('Date Criterion')
+            .setName('Date criterion')
             .setDesc('Which date to use when identifying old articles.')
             .addDropdown(dropdown => dropdown
-                .addOption('datesaved', 'Date Saved')
-                .addOption('datepub', 'Date Published')
+                .addOption('datesaved', 'Date saved')
+                .addOption('datepub', 'Date published')
                 .setValue(plugin.settings.autoCleanupDateField ?? 'datesaved')
                 .onChange((v: string) => {
                     plugin.settings.autoCleanupDateField = v as CleanupDateField;
@@ -236,7 +231,7 @@ export function renderGeneralTab(
         applyIndent(cleanupDateFieldSetting.settingEl);
 
         const protectedCheckToggle = new Setting(contentEl)
-            .setName('Check Mark as Read Before Deleting')
+            .setName('Check mark as read before deleting')
             .setDesc('Only delete articles if their checkbox property is true.')
             .addToggle(toggle => toggle
                 .setValue(plugin.settings.autoCleanupCheckProperty ?? false)
@@ -251,7 +246,7 @@ export function renderGeneralTab(
         if (plugin.settings.autoCleanupCheckProperty) {
             const fallbackProp = plugin.settings.markAsReadCheckboxProperty?.trim() || 'Checkbox';
             const protectedPropertySetting = new Setting(contentEl)
-                .setName('Custom Property Name')
+                .setName('Custom property name')
                 .setDesc(`Defaults to the Mark as Read checkbox property ("${fallbackProp}"). Left empty to keep default.`)
                 .addText(text => {
                     text.setPlaceholder(fallbackProp)
@@ -260,7 +255,7 @@ export function renderGeneralTab(
                             plugin.settings.autoCleanupCheckPropertyName = v.trim();
                             saveSettings(plugin);
                         }, 500));
-                    text.inputEl.style.fontSize = '16px';
+                    text.inputEl.setCssProps({ 'font-size': '16px' });
                     text.inputEl.autocapitalize = 'off';
                     text.inputEl.autocomplete = 'off';
                     text.inputEl.spellcheck = false;
@@ -272,10 +267,10 @@ export function renderGeneralTab(
 
     // ── Mark as Read ──────────────────────────────────────────────────────────
 
-    contentEl.createEl('h3', { text: 'Mark as Read' });
+    contentEl.createEl('h3', { text: 'Mark as read' });
 
     const markAsReadToggle = new Setting(contentEl)
-        .setName('Enable Mark as Read Link')
+        .setName('Enable mark as read link')
         .setDesc('Adds a clickable link frontmatter property that toggles a checkbox when clicked.')
         .addToggle(toggle => toggle
             .setValue(plugin.settings.markAsReadEnabled ?? true)
@@ -288,11 +283,11 @@ export function renderGeneralTab(
 
     if (plugin.settings.markAsReadEnabled) {
         const markAsReadLinkPropSetting = new Setting(contentEl)
-            .setName('Mark as Read Button Property Name')
+            .setName('Mark as read button property name')
             .setDesc('Frontmatter property name for the clickable link.')
-            .setDesc('Name of the frontmatter property that stores the "Mark as Read" link.')
+            .setDesc('Name of the frontmatter property that stores the "mark as read" link.')
             .addText(text => {
-                text.setPlaceholder('Mark as Read')
+                text.setPlaceholder('Mark as read')
                     .setValue(plugin.settings.markAsReadLinkProperty ?? 'Mark as Read')
                     .onChange((val) => {
                         plugin.settings.markAsReadLinkProperty = val;
@@ -303,7 +298,7 @@ export function renderGeneralTab(
         applyIndent(markAsReadLinkPropSetting.settingEl);
 
         const markAsReadCheckboxPropSetting = new Setting(contentEl)
-            .setName('Read Property Name')
+            .setName('Read property name')
             .setDesc('Name of the frontmatter property (boolean) that controls the read state.')
             .addText(text => {
                 text.setPlaceholder('Read')
@@ -317,8 +312,8 @@ export function renderGeneralTab(
         applyIndent(markAsReadCheckboxPropSetting.settingEl);
 
         const markAsReadDeleteSetting = new Setting(contentEl)
-            .setName('Auto-Delete When Marked as Read')
-            .setDesc('Automatically delete articles when their checkbox is ticked. (Requires Auto-Update).')
+            .setName('Auto-delete when marked as read')
+            .setDesc('Automatically delete articles when their checkbox is ticked. Requires auto-update.')
             .addToggle(toggle => toggle
                 .setValue(plugin.settings.markAsReadDeleteArticles ?? false)
                 .onChange((v) => {
@@ -329,10 +324,10 @@ export function renderGeneralTab(
         applyIndent(markAsReadDeleteSetting.settingEl);
 
         const copyFormulaSetting = new Setting(contentEl)
-            .setName('Copy Bases Formula')
-            .setDesc('Copy a formula for Obsidian Bases to create a clickable Mark as Read button in Gallery/Card views.')
+            .setName('Copy bases formula')
+            .setDesc('Copy a formula for Obsidian bases to create a clickable mark as read button in gallery/card views.')
             .addButton(btn => {
-                btn.setButtonText('Copy Formula')
+                btn.setButtonText('Copy formula')
                     .onClick(() => {
                         void (async () => {
                         const checkboxProp = plugin.settings.markAsReadCheckboxProperty?.trim() || 'Read';
@@ -384,7 +379,7 @@ export function renderGeneralTab(
     applyCardStyle(deleteBehaviorSetting);
 
     const downloadImgSetting = new Setting(contentEl)
-        .setName('Download Images')
+        .setName('Download images')
         .setDesc('Save article images locally to your vault.')
         .addToggle(toggle => toggle
             .setValue(plugin.settings.downloadImages ?? false)
@@ -397,7 +392,7 @@ export function renderGeneralTab(
 
     if (plugin.settings.downloadImages) {
         const locationSetting = new Setting(contentEl)
-            .setName('Default Location For New Images')
+            .setName('Default location for new images')
             .setDesc('Where newly added images are placed.')
             .addDropdown(dropdown => dropdown
                 .addOption('obsidian', 'Use Obsidian settings')
@@ -416,25 +411,25 @@ export function renderGeneralTab(
 
         if (plugin.settings.imageLocation === 'obsidian') {
             const infoSetting = new Setting(contentEl)
-                .setName('Using Obsidian Attachment Settings')
-                .setDesc('See Obsidian Settings → Files and links → Default location for new attachments.');
+                .setName('Using Obsidian attachment settings')
+                .setDesc('See Obsidian settings → Files and links → Default location for new attachments.'); // eslint-disable-line obsidianmd/ui/sentence-case -- Obsidian navigation labels
             applyCardStyle(infoSetting);
             applyIndent(infoSetting.settingEl, 2);
-            infoSetting.settingEl.style.opacity = '0.7';
+            infoSetting.settingEl.setCssProps({ opacity: '0.7' });
         }
 
         if (plugin.settings.imageLocation === 'subfolder') {
             const subfolderNameSetting = new Setting(contentEl)
-                .setName('Subfolder Name')
+                .setName('Subfolder name')
                 .setDesc('Name of the subfolder (e.g., "attachments").')
                 .addText(text => {
-                    text.setPlaceholder('attachments')
+                    text.setPlaceholder('Attachments')
                         .setValue(plugin.settings.imagesFolder ?? 'attachments')
                         .onChange(debounce(async (v: string) => {
                             plugin.settings.imagesFolder = sanitizeFolderPath(v, 'attachments');
                             saveSettings(plugin);
                         }, 500));
-                    text.inputEl.style.fontSize = '16px';
+                    text.inputEl.setCssProps({ 'font-size': '16px' });
                     text.inputEl.autocapitalize = 'off';
                     text.inputEl.autocomplete = 'off';
                     text.inputEl.spellcheck = false;
@@ -443,7 +438,7 @@ export function renderGeneralTab(
             applyIndent(subfolderNameSetting.settingEl, 2);
 
             const feedBaseSetting = new Setting(contentEl)
-                .setName('Use Feed Folder As Base')
+                .setName('Use feed folder as base')
                 .setDesc('If enabled, subfolder is created inside each feed folder.')
                 .addToggle(toggle => toggle
                     .setValue(plugin.settings.useFeedFolder ?? true)
@@ -457,16 +452,16 @@ export function renderGeneralTab(
 
         if (plugin.settings.imageLocation === 'specified') {
             const pathSetting = new Setting(contentEl)
-                .setName('Attachment Folder Path')
+                .setName('Attachment folder path')
                 .setDesc('Path to a specific folder in your vault.')
                 .addText(text => {
-                    text.setPlaceholder('attachments')
+                    text.setPlaceholder('Attachments')
                         .setValue(plugin.settings.imagesFolder ?? '')
                         .onChange(debounce(async (v: string) => {
                             plugin.settings.imagesFolder = sanitizeFolderPath(v, '');
                             saveSettings(plugin);
                         }, 500));
-                    text.inputEl.style.fontSize = '16px';
+                    text.inputEl.setCssProps({ 'font-size': '16px' });
                     text.inputEl.autocapitalize = 'off';
                     text.inputEl.autocomplete = 'off';
                     text.inputEl.spellcheck = false;
@@ -478,10 +473,10 @@ export function renderGeneralTab(
 
     // ── Ribbon Icons ──────────────────────────────────────────────────────────
 
-    contentEl.createEl('h3', { text: 'Ribbon Icons' });
+    contentEl.createEl('h3', { text: 'Ribbon icons' });
 
     const ribbonUpdateSetting = new Setting(contentEl)
-        .setName('Show "Update RSS Feeds" Button')
+        .setName('Show update RSS feeds button')
         .setDesc('Display the update button in the left sidebar ribbon.')
         .addToggle(toggle => toggle
             .setValue(plugin.settings.ribbonUpdate ?? true)
@@ -492,7 +487,7 @@ export function renderGeneralTab(
     applyCardStyle(ribbonUpdateSetting);
 
     const ribbonAddSetting = new Setting(contentEl)
-        .setName('Show "Add RSS Feed" Button')
+        .setName('Show add RSS feed button')
         .setDesc('Display the add feed button in the left sidebar ribbon.')
         .addToggle(toggle => toggle
             .setValue(plugin.settings.ribbonAdd ?? true)
@@ -502,12 +497,23 @@ export function renderGeneralTab(
             }));
     applyCardStyle(ribbonAddSetting);
 
+    const ribbonCleanupSetting = new Setting(contentEl)
+        .setName('Show delete old articles now button')
+        .setDesc('Display the cleanup button in the left sidebar ribbon.')
+        .addToggle(toggle => toggle
+            .setValue(plugin.settings.ribbonCleanup ?? true)
+            .onChange((v) => {
+                plugin.settings.ribbonCleanup = v;
+                saveSettings(plugin);
+            }));
+    applyCardStyle(ribbonCleanupSetting);
+
     // ── Notifications ─────────────────────────────────────────────────────────
 
     contentEl.createEl('h3', { text: 'Notifications' });
 
     const progressNoticeSetting = new Setting(contentEl)
-        .setName('Show Updating Feeds Notification')
+        .setName('Show updating feeds notification')
         .setDesc('Show a notification when updating feeds.')
         .addToggle(toggle => toggle
             .setValue(plugin.settings.showProgressNotice ?? true)
@@ -518,7 +524,7 @@ export function renderGeneralTab(
     applyCardStyle(progressNoticeSetting);
 
     const statusBarSetting = new Setting(contentEl)
-        .setName('Show Progress in Status Bar')
+        .setName('Show progress in status bar')
         .setDesc('Display progress in the bottom status bar.')
         .addToggle(toggle => toggle
             .setValue(plugin.settings.showStatusBar ?? true)
@@ -533,8 +539,8 @@ export function renderGeneralTab(
     contentEl.createEl('h3', { text: 'YouTube' });
 
     const tagShortsSetting = new Setting(contentEl)
-        .setName('Tag YouTube Shorts')
-        .setDesc('Automatically tag articles from YouTube Shorts.')
+        .setName('Tag YouTube shorts')
+        .setDesc('Automatically tag articles from YouTube shorts.')
         .addToggle(toggle => toggle
             .setValue(plugin.settings.tagShortsGlobal ?? false)
             .onChange((v) => {
@@ -544,8 +550,8 @@ export function renderGeneralTab(
     applyCardStyle(tagShortsSetting);
 
     const skipShortsSetting = new Setting(contentEl)
-        .setName('Skip YouTube Shorts')
-        .setDesc('Never save articles from YouTube Shorts URLs.')
+        .setName('Skip YouTube shorts')
+        .setDesc('Never save articles from YouTube shorts.')
         .addToggle(toggle => toggle
             .setValue(plugin.settings.skipShortsGlobal ?? false)
             .onChange((v) => {
@@ -555,7 +561,7 @@ export function renderGeneralTab(
     applyCardStyle(skipShortsSetting);
 
     const tagLiveToggle = new Setting(contentEl)
-        .setName('Tag Live Streams')
+        .setName('Tag live streams')
         .setDesc('Tag articles matching live stream keywords in the title.')
         .addToggle(toggle => toggle
             .setValue(plugin.settings.tagLiveGlobal ?? false)
@@ -568,16 +574,16 @@ export function renderGeneralTab(
 
     if (plugin.settings.tagLiveGlobal) {
         const tagLiveKeywordsSetting = new Setting(contentEl)
-            .setName('Live Keywords')
+            .setName('Live keywords')
             .setDesc('Comma-separated keywords (case-insensitive).')
             .addText(t => {
-                t.setPlaceholder('live, ao vivo, stream, 🔴')
+                t.setPlaceholder('Live, ao vivo, stream')
                     .setValue(plugin.settings.tagLiveKeywords ?? '')
                     .onChange(debounce(async (v: string) => {
                         plugin.settings.tagLiveKeywords = v.trim();
                         saveSettings(plugin);
                     }, 500));
-                t.inputEl.style.fontSize = '16px';
+                t.inputEl.setCssProps({ 'font-size': '16px' });
                 t.inputEl.autocapitalize = 'off';
                 t.inputEl.autocomplete = 'off';
                 t.inputEl.spellcheck = false;
@@ -589,10 +595,10 @@ export function renderGeneralTab(
 
     // ── Developer Tools ───────────────────────────────────────────────────────
 
-    contentEl.createEl('h3', { text: 'Developer Tools' });
+    contentEl.createEl('h3', { text: 'Developer tools' });
 
     const devToolsSetting = new Setting(contentEl)
-        .setName('Developer Mode')
+        .setName('Developer mode')
         .setDesc('Enables extra controls for debugging.')
         .addToggle(toggle => toggle
             .setValue(plugin.settings.devMode ?? false)
@@ -605,7 +611,7 @@ export function renderGeneralTab(
                     return;
                 }
                 try {
-                    (plugin.app as any).setting.openTabById(plugin.manifest.id);
+                    (plugin.app as unknown as AppWithSettings).setting.openTabById(plugin.manifest.id);
                 } catch (e) {
                     console.warn('[RSS Plugin] Could not reopen settings tab:', e);
                 }
@@ -633,18 +639,18 @@ export function renderGeneralTab(
                         .onClick(async () => {
                             if (!confirming) {
                                 confirming = true;
-                                btn.setButtonText('⚠️ Click again to confirm');
-                                btn.buttonEl.style.background = 'var(--color-red)';
+                                btn.setButtonText('Click again to confirm');
+                                btn.buttonEl.setCssProps({ background: 'var(--color-red)' });
 
                                 resetTimer = setTimeout(() => {
                                     confirming = false;
                                     btn.setButtonText(`Purge ${label} entries`);
-                                    btn.buttonEl.style.background = '';
+                                    btn.buttonEl.setCssProps({ background: '' });
                                 }, 4000);
                             } else {
                                 if (resetTimer) clearTimeout(resetTimer);
                                 confirming = false;
-                                btn.setButtonText('⏳ Purging...');
+                                btn.setButtonText('Purging...');
                                 btn.setDisabled(true);
 
                                 try {
@@ -656,10 +662,10 @@ export function renderGeneralTab(
                                     }
                                 } catch (e) {
                                     console.error(`RSS: purgeEntriesByStatus('${status}') failed`, e);
-                                    new Notice('RSS: Failed to purge entries.', 4000);
+                                    new Notice('RSS: failed to purge entries.', 4000);
                                 } finally {
                                     btn.setButtonText(`Purge ${label} entries`);
-                                    btn.buttonEl.style.background = '';
+                                    btn.buttonEl.setCssProps({ background: '' });
                                     btn.setDisabled(false);
                                 }
                             }

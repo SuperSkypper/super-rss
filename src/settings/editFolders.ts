@@ -1,5 +1,17 @@
-import { App, Modal, Notice, setIcon, Vault, normalizePath } from 'obsidian';
+import { App, Modal, Notice, setIcon, normalizePath } from 'obsidian';
 import RssPlugin, { FeedConfig, FeedGroup, resolveFeedPath, sanitizeFolderPath } from '../main';
+
+function applyCssText(element: HTMLElement, cssText: string): void {
+    const properties: Record<string, string> = {};
+    for (const declaration of cssText.split(';')) {
+        const separator = declaration.indexOf(':');
+        if (separator < 0) continue;
+        const property = declaration.slice(0, separator).trim();
+        const value = declaration.slice(separator + 1).trim();
+        if (property && value) properties[property] = value;
+    }
+    element.setCssProps(properties);
+}
 
 // ─── Sort helpers ─────────────────────────────────────────────────────────────
 
@@ -12,33 +24,26 @@ export function sortGroups(groups: FeedGroup[]): FeedGroup[] {
 // ─── Global loading overlay ───────────────────────────────────────────────────
 
 export function showGlobalLoading(message = 'Saving...'): () => void {
-    if (!document.getElementById('rss-spin-style')) {
-        const style = document.createElement('style');
-        style.id = 'rss-spin-style';
-        style.textContent = '@keyframes rss-spin { to { transform: rotate(360deg); } }';
-        document.head.appendChild(style);
-    }
-
     const overlay = document.body.createDiv();
     overlay.id = 'rss-global-loading';
-    overlay.style.cssText = `
+    applyCssText(overlay, `
         position: fixed; inset: 0; z-index: 99999;
         background: rgba(0, 0, 0, 0.55);
         display: flex; flex-direction: column;
         align-items: center; justify-content: center; gap: 14px;
-    `;
+    `);
 
     const spinner = overlay.createDiv();
-    spinner.style.cssText = `
+    applyCssText(spinner, `
         width: 36px; height: 36px;
         border: 3px solid rgba(255,255,255,0.2);
         border-top-color: var(--interactive-accent);
         border-radius: 50%;
         animation: rss-spin 0.7s linear infinite;
-    `;
+    `);
 
     const label = overlay.createEl('span', { text: message });
-    label.style.cssText = 'color: white; font-size: 0.9em; opacity: 0.9;';
+    applyCssText(label, 'color: white; font-size: 0.9em; opacity: 0.9;');
 
     return () => overlay.remove();
 }
@@ -127,17 +132,17 @@ export function openMoveToFolderModal(
             if (groups.length === 0) {
                 contentEl.createEl('p', { text: 'No folders exist yet. Create one first.' });
                 const footer = contentEl.createDiv();
-                footer.style.cssText = 'display: flex; justify-content: flex-end; margin-top: 16px;';
+                applyCssText(footer, 'display: flex; justify-content: flex-end; margin-top: 16px;');
                 const cancelBtn = footer.createEl('button', { text: 'Close' });
                 cancelBtn.onclick = () => this.close();
                 return;
             }
 
             const list = contentEl.createDiv();
-            list.style.cssText = 'display: flex; flex-direction: column; gap: 6px; margin: 16px 0;';
+            applyCssText(list, 'display: flex; flex-direction: column; gap: 6px; margin: 16px 0;');
 
-            const noneBtn = list.createEl('button', { text: '— No folder —' });
-            noneBtn.style.cssText = 'text-align: left; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--background-modifier-border); background: transparent; cursor: pointer; color: var(--text-muted);';
+            const noneBtn = list.createEl('button', { text: 'No folder' });
+            applyCssText(noneBtn, 'text-align: left; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--background-modifier-border); background: transparent; cursor: pointer; color: var(--text-muted);');
             noneBtn.onclick = () => {
                 void (async () => {
                 const hide = showGlobalLoading('Moving feeds...');
@@ -154,7 +159,7 @@ export function openMoveToFolderModal(
 
             for (const group of groups) {
                 const btn = list.createEl('button', { text: group.name });
-                btn.style.cssText = 'text-align: left; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--background-modifier-border); background: transparent; cursor: pointer; color: var(--text-normal);';
+                applyCssText(btn, 'text-align: left; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--background-modifier-border); background: transparent; cursor: pointer; color: var(--text-normal);');
                 btn.onclick = () => {
                     void (async () => {
                     const hide = showGlobalLoading('Moving feeds...');
@@ -172,7 +177,7 @@ export function openMoveToFolderModal(
             }
 
             const footer = contentEl.createDiv();
-            footer.style.cssText = 'display: flex; justify-content: flex-end; margin-top: 8px;';
+            applyCssText(footer, 'display: flex; justify-content: flex-end; margin-top: 8px;');
             const cancelBtn = footer.createEl('button', { text: 'Cancel' });
             cancelBtn.onclick = () => this.close();
         }
@@ -194,16 +199,16 @@ export function openEditFoldersModal(
         private emptyMsg:  HTMLElement | null = null;
 
         onOpen() {
-            this.modalEl.style.width         = '500px';
-            this.modalEl.style.maxWidth      = '95vw';
-            this.modalEl.style.height        = 'min(600px, 85vh)';
-            this.modalEl.style.maxHeight     = 'none';
-            this.modalEl.style.overflow      = 'hidden';
-            this.modalEl.style.display       = 'flex';
-            this.modalEl.style.flexDirection = 'column';
+            this.modalEl.setCssProps({ 'width': '500px' });
+            this.modalEl.setCssProps({ 'max-width': '95vw' });
+            this.modalEl.setCssProps({ 'height': 'min(600px, 85vh)' });
+            this.modalEl.setCssProps({ 'max-height': 'none' });
+            this.modalEl.setCssProps({ 'overflow': 'hidden' });
+            this.modalEl.setCssProps({ 'display': 'flex' });
+            this.modalEl.setCssProps({ 'flex-direction': 'column' });
 
             const { contentEl } = this;
-            contentEl.style.cssText = 'display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; overflow: hidden; padding: 0;';
+            applyCssText(contentEl, 'display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; overflow: hidden; padding: 0;');
 
             this.render();
         }
@@ -216,23 +221,24 @@ export function openEditFoldersModal(
 
             // ── Fixed header ──────────────────────────────────────────────────
             const header = contentEl.createDiv();
-            header.style.cssText = `
+            applyCssText(header, `
                 display: flex; align-items: center; justify-content: space-between;
                 padding: 18px 20px 12px;
                 flex-shrink: 0;
                 border-bottom: 1px solid var(--background-modifier-border);
-            `;
+            `);
 
-            header.createEl('h2', { text: 'Edit Folders' }).style.cssText = 'margin: 0; font-size: 1.1em;';
+            const headerTitle = header.createEl('h2', { text: 'Edit folders' });
+            applyCssText(headerTitle, 'margin: 0; font-size: 1.1em;');
 
             const addBtn = header.createEl('button');
-            addBtn.style.cssText = 'display: flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em; border: 1px solid var(--background-modifier-border); background: transparent; color: var(--text-muted); transition: all 0.15s ease;';
-            addBtn.addEventListener('mouseenter', () => { addBtn.style.borderColor = 'var(--interactive-accent)'; addBtn.style.color = 'var(--text-normal)'; });
-            addBtn.addEventListener('mouseleave', () => { addBtn.style.borderColor = 'var(--background-modifier-border)'; addBtn.style.color = 'var(--text-muted)'; });
+            applyCssText(addBtn, 'display: flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em; border: 1px solid var(--background-modifier-border); background: transparent; color: var(--text-muted); transition: all 0.15s ease;');
+            addBtn.addEventListener('mouseenter', () => { addBtn.setCssProps({ 'border-color': 'var(--interactive-accent)' }); addBtn.setCssProps({ 'color': 'var(--text-normal)' }); });
+            addBtn.addEventListener('mouseleave', () => { addBtn.setCssProps({ 'border-color': 'var(--background-modifier-border)' }); addBtn.setCssProps({ 'color': 'var(--text-muted)' }); });
             const addIconEl = addBtn.createDiv();
-            addIconEl.style.cssText = 'display: flex; align-items: center; width: 14px; height: 14px;';
+            applyCssText(addIconEl, 'display: flex; align-items: center; width: 14px; height: 14px;');
             setIcon(addIconEl, 'folder-plus');
-            addBtn.createSpan({ text: 'New Folder' });
+            addBtn.createSpan({ text: 'New folder' });
             addBtn.addEventListener('click', () => {
                 void (async () => {
                 const name = await promptFolderName(app);
@@ -248,17 +254,17 @@ export function openEditFoldersModal(
 
             // ── Scrollable folder list ────────────────────────────────────────
             const listEl = contentEl.createDiv();
-            listEl.style.cssText = 'flex: 1 1 0; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 12px 20px; -webkit-overflow-scrolling: touch;';
+            applyCssText(listEl, 'flex: 1 1 0; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 12px 20px; -webkit-overflow-scrolling: touch;');
 
             const groups = sortGroups(plugin.settings.groups);
 
             if (groups.length === 0) {
-                this.emptyMsg = listEl.createEl('p', { text: 'No folders yet. Click "New Folder" to create one.' });
-                this.emptyMsg.style.cssText = 'color: var(--text-muted); text-align: center; margin: 32px 0;';
+                this.emptyMsg = listEl.createEl('p', { text: 'No folders yet. Use new folder to create one.' });
+                applyCssText(this.emptyMsg, 'color: var(--text-muted); text-align: center; margin: 32px 0;');
             }
 
             this.innerList = listEl.createDiv();
-            this.innerList.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
+            applyCssText(this.innerList, 'display: flex; flex-direction: column; gap: 8px;');
 
             for (const group of groups) {
                 this.buildRow(group, this.innerList);
@@ -266,12 +272,12 @@ export function openEditFoldersModal(
 
             // ── Fixed footer ──────────────────────────────────────────────────
             const footer = contentEl.createDiv();
-            footer.style.cssText = `
+            applyCssText(footer, `
                 display: flex; justify-content: flex-end; align-items: center;
                 padding: 12px 20px;
                 flex-shrink: 0;
                 border-top: 1px solid var(--background-modifier-border);
-            `;
+            `);
 
             const closeBtn = footer.createEl('button', { text: 'Close', cls: 'mod-cta' });
             closeBtn.onclick = () => this.close();
@@ -292,35 +298,35 @@ export function openEditFoldersModal(
         // ── Build a single folder row ─────────────────────────────────────────
         private buildRow(group: FeedGroup, container: HTMLElement) {
             const row = container.createDiv();
-            row.style.cssText = `
+            applyCssText(row, `
                 display: flex; align-items: center; gap: 8px;
                 background: var(--background-secondary);
                 border: 1px solid var(--background-modifier-border);
                 border-radius: 8px; padding: 8px 12px;
                 transition: border-color 0.15s ease;
-            `;
-            row.onmouseenter = () => { row.style.borderColor = 'var(--interactive-accent)'; };
-            row.onmouseleave = () => { row.style.borderColor = 'var(--background-modifier-border)'; };
+            `);
+            row.onmouseenter = () => { row.setCssProps({ 'border-color': 'var(--interactive-accent)' }); };
+            row.onmouseleave = () => { row.setCssProps({ 'border-color': 'var(--background-modifier-border)' }); };
 
             const folderIconEl = row.createDiv();
-            folderIconEl.style.cssText = 'display: flex; align-items: center; width: 16px; height: 16px; flex-shrink: 0; color: var(--text-muted);';
+            applyCssText(folderIconEl, 'display: flex; align-items: center; width: 16px; height: 16px; flex-shrink: 0; color: var(--text-muted);');
             setIcon(folderIconEl, 'folder');
 
             const nameEl = row.createEl('span', { text: group.name });
-            nameEl.style.cssText = 'flex: 1; font-size: 0.9em; color: var(--text-normal);';
+            applyCssText(nameEl, 'flex: 1; font-size: 0.9em; color: var(--text-normal);');
 
             const feedCount = plugin.settings.feeds.filter(f => f.groupId === group.id).length;
             const countBadge = row.createEl('span', { text: `${feedCount} feed${feedCount !== 1 ? 's' : ''}` });
-            countBadge.style.cssText = 'font-size: 0.78em; color: var(--text-muted); background: var(--background-modifier-hover); border-radius: 4px; padding: 2px 6px; white-space: nowrap;';
+            applyCssText(countBadge, 'font-size: 0.78em; color: var(--text-muted); background: var(--background-modifier-hover); border-radius: 4px; padding: 2px 6px; white-space: nowrap;');
 
             // ── Rename ────────────────────────────────────────────────────────
             const renameBtn = row.createEl('button');
             renameBtn.title = 'Rename folder';
-            renameBtn.style.cssText = 'display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 5px; border: none; background: transparent; cursor: pointer; color: var(--text-muted); transition: background 0.12s ease; flex-shrink: 0;';
-            renameBtn.addEventListener('mouseenter', () => { renameBtn.style.background = 'var(--background-modifier-hover)'; renameBtn.style.color = 'var(--text-normal)'; });
-            renameBtn.addEventListener('mouseleave', () => { renameBtn.style.background = 'transparent'; renameBtn.style.color = 'var(--text-muted)'; });
+            applyCssText(renameBtn, 'display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 5px; border: none; background: transparent; cursor: pointer; color: var(--text-muted); transition: background 0.12s ease; flex-shrink: 0;');
+            renameBtn.addEventListener('mouseenter', () => { renameBtn.setCssProps({ 'background': 'var(--background-modifier-hover)' }); renameBtn.setCssProps({ 'color': 'var(--text-normal)' }); });
+            renameBtn.addEventListener('mouseleave', () => { renameBtn.setCssProps({ 'background': 'transparent' }); renameBtn.setCssProps({ 'color': 'var(--text-muted)' }); });
             const renameIconEl = renameBtn.createDiv();
-            renameIconEl.style.cssText = 'display: flex; align-items: center; width: 14px; height: 14px;';
+            applyCssText(renameIconEl, 'display: flex; align-items: center; width: 14px; height: 14px;');
             setIcon(renameIconEl, 'pencil');
             renameBtn.addEventListener('click', () => {
                 void (async () => {
@@ -338,11 +344,11 @@ export function openEditFoldersModal(
             // ── Delete ────────────────────────────────────────────────────────
             const deleteBtn = row.createEl('button');
             deleteBtn.title = 'Delete folder';
-            deleteBtn.style.cssText = 'display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 5px; border: none; background: transparent; cursor: pointer; color: var(--text-muted); transition: background 0.12s ease; flex-shrink: 0;';
-            deleteBtn.addEventListener('mouseenter', () => { deleteBtn.style.background = 'var(--background-modifier-hover)'; deleteBtn.style.color = 'var(--color-red)'; });
-            deleteBtn.addEventListener('mouseleave', () => { deleteBtn.style.background = 'transparent'; deleteBtn.style.color = 'var(--text-muted)'; });
+            applyCssText(deleteBtn, 'display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 5px; border: none; background: transparent; cursor: pointer; color: var(--text-muted); transition: background 0.12s ease; flex-shrink: 0;');
+            deleteBtn.addEventListener('mouseenter', () => { deleteBtn.setCssProps({ 'background': 'var(--background-modifier-hover)' }); deleteBtn.setCssProps({ 'color': 'var(--color-red)' }); });
+            deleteBtn.addEventListener('mouseleave', () => { deleteBtn.setCssProps({ 'background': 'transparent' }); deleteBtn.setCssProps({ 'color': 'var(--text-muted)' }); });
             const deleteIconEl = deleteBtn.createDiv();
-            deleteIconEl.style.cssText = 'display: flex; align-items: center; width: 14px; height: 14px;';
+            applyCssText(deleteIconEl, 'display: flex; align-items: center; width: 14px; height: 14px;');
             setIcon(deleteIconEl, 'trash');
             deleteBtn.addEventListener('click', () => {
                 void (async () => {
@@ -363,10 +369,23 @@ export function openEditFoldersModal(
                 // Show empty state if the list is now empty
                 if (this.innerList && this.innerList.childElementCount === 0) {
                     const parent = this.innerList.parentElement!;
-                    this.emptyMsg = parent.createEl('p', { text: 'No folders yet. Click "New Folder" to create one.' });
-                    this.emptyMsg.style.cssText = 'color: var(--text-muted); text-align: center; margin: 32px 0;';
+                    this.emptyMsg = parent.createEl('p', { text: 'No folders yet. Use new folder to create one.' });
+                    applyCssText(this.emptyMsg, 'color: var(--text-muted); text-align: center; margin: 32px 0;');
                     parent.insertBefore(this.emptyMsg, this.innerList);
                 }
+
+function applyCssText(element: HTMLElement, cssText: string): void {
+    const properties: Record<string, string> = {};
+    for (const declaration of cssText.split(';')) {
+        const separator = declaration.indexOf(':');
+        if (separator < 0) continue;
+        const property = declaration.slice(0, separator).trim();
+        const value = declaration.slice(separator + 1).trim();
+        if (property && value) properties[property] = value;
+    }
+    element.setCssProps(properties);
+}
+
 
                 new Notice(`Deleted folder "${deletedName}"`);
                 })();
@@ -389,12 +408,12 @@ export function promptFolderName(app: App, existingName?: string): Promise<strin
 
             onOpen() {
                 const { contentEl } = this;
-                contentEl.createEl('h3', { text: existingName ? 'Rename Folder' : 'New Folder' });
+                contentEl.createEl('h3', { text: existingName ? 'Rename folder' : 'New folder' });
 
                 const input = contentEl.createEl('input', { type: 'text' });
                 input.placeholder = 'Folder name (e.g. News)';
                 input.value = this.value;
-                input.style.cssText = 'width: 100%; margin: 12px 0; padding: 6px 10px; box-sizing: border-box;';
+                applyCssText(input, 'width: 100%; margin: 12px 0; padding: 6px 10px; box-sizing: border-box;');
                 input.focus();
 
                 input.addEventListener('input', (e: Event) => { this.value = (e.target as HTMLInputElement).value; });
@@ -404,7 +423,7 @@ export function promptFolderName(app: App, existingName?: string): Promise<strin
                 });
 
                 const footer = contentEl.createDiv();
-                footer.style.cssText = 'display: flex; justify-content: flex-end; gap: 8px;';
+                applyCssText(footer, 'display: flex; justify-content: flex-end; gap: 8px;');
 
                 const cancelBtn = footer.createEl('button', { text: 'Cancel' });
                 cancelBtn.onclick = () => this.close();
@@ -434,36 +453,36 @@ export function renderFolderDropdown(
     if (groups.length === 0) return;
 
     const sep = containerEl.createDiv();
-    sep.style.cssText = 'width: 1px; height: 18px; background: var(--background-modifier-border); margin: 0 8px 0 2px; flex-shrink: 0;';
+    applyCssText(sep, 'width: 1px; height: 18px; background: var(--background-modifier-border); margin: 0 8px 0 2px; flex-shrink: 0;');
 
     const trigger = containerEl.createEl('button');
 
     const updateTriggerLabel = () => {
         trigger.empty();
         const iconEl = trigger.createDiv();
-        iconEl.style.cssText = 'display: flex; align-items: center; width: 14px; height: 14px; flex-shrink: 0;';
+        applyCssText(iconEl, 'display: flex; align-items: center; width: 14px; height: 14px; flex-shrink: 0;');
         setIcon(iconEl, 'folder');
         const current = getFilter();
         const label = current === null
-            ? 'All Folders'
-            : (groups.find(g => g.id === current)?.name ?? 'All Folders');
+            ? 'All folders'
+            : (groups.find(g => g.id === current)?.name ?? 'All folders');
         trigger.createSpan({ text: label });
         const chevron = trigger.createDiv();
-        chevron.style.cssText = 'display: flex; align-items: center; width: 14px; height: 14px; margin-left: 2px; opacity: 0.6;';
+        applyCssText(chevron, 'display: flex; align-items: center; width: 14px; height: 14px; margin-left: 2px; opacity: 0.6;');
         setIcon(chevron, 'chevron-down');
 
         const isFiltered = current !== null;
-        trigger.style.borderColor = isFiltered ? 'var(--interactive-accent)' : 'var(--background-modifier-border)';
-        trigger.style.color       = isFiltered ? 'var(--text-normal)'        : 'var(--text-muted)';
+        trigger.setCssProps({ 'border-color': isFiltered ? 'var(--interactive-accent)' : 'var(--background-modifier-border)' });
+        trigger.setCssProps({ 'color': isFiltered ? 'var(--text-normal)'        : 'var(--text-muted)' });
     };
 
-    trigger.style.cssText = `
+    applyCssText(trigger, `
         display: flex; align-items: center; gap: 5px;
         padding: 4px 10px; border-radius: 20px; font-size: 0.82em; cursor: pointer;
         border: 1px solid var(--background-modifier-border);
         background: transparent; color: var(--text-muted);
         transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
-    `;
+    `);
 
     updateTriggerLabel();
 
@@ -488,7 +507,7 @@ export function renderFolderDropdown(
 
     const openPopover = () => {
         popover = document.body.createDiv();
-        popover.style.cssText = `
+        applyCssText(popover, `
             position: fixed; z-index: 9999;
             background: var(--background-primary);
             border: 1px solid var(--background-modifier-border);
@@ -496,27 +515,27 @@ export function renderFolderDropdown(
             box-shadow: 0 4px 20px rgba(0,0,0,0.35);
             padding: 4px;
             min-width: 180px;
-        `;
+        `);
 
         const addOption = (label: string, value: FolderFilter, icon: string) => {
             const item = popover!.createDiv();
             const isCurrent = getFilter() === value;
-            item.style.cssText = `
+            applyCssText(item, `
                 display: flex; align-items: center; gap: 8px;
                 padding: 8px 12px; border-radius: 5px; cursor: pointer;
                 font-size: 0.85em;
                 background: ${isCurrent ? 'var(--background-modifier-hover)' : 'transparent'};
                 color: ${isCurrent ? 'var(--text-normal)' : 'var(--text-muted)'};
                 font-weight: ${isCurrent ? '500' : '400'};
-            `;
+            `);
             const iconEl = item.createDiv();
-            iconEl.style.cssText = 'display: flex; align-items: center; width: 14px; height: 14px; flex-shrink: 0;';
+            applyCssText(iconEl, 'display: flex; align-items: center; width: 14px; height: 14px; flex-shrink: 0;');
             setIcon(iconEl, icon);
             item.createSpan({ text: label });
-            item.onmouseenter = () => { item.style.background = 'var(--background-modifier-hover)'; item.style.color = 'var(--text-normal)'; };
+            item.onmouseenter = () => { item.setCssProps({ 'background': 'var(--background-modifier-hover)' }); item.setCssProps({ 'color': 'var(--text-normal)' }); };
             item.onmouseleave = () => {
-                item.style.background = isCurrent ? 'var(--background-modifier-hover)' : 'transparent';
-                item.style.color      = isCurrent ? 'var(--text-normal)'               : 'var(--text-muted)';
+                item.setCssProps({ 'background': isCurrent ? 'var(--background-modifier-hover)' : 'transparent' });
+                item.setCssProps({ 'color': isCurrent ? 'var(--text-normal)'               : 'var(--text-muted)' });
             };
             item.addEventListener('pointerdown', (ev) => {
                 ev.preventDefault();
@@ -526,12 +545,12 @@ export function renderFolderDropdown(
             });
         };
 
-        addOption('All Folders', null, 'layers');
+        addOption('All folders', null, 'layers');
         const dividerEl = popover.createEl('hr');
-        dividerEl.style.cssText = 'border: none; border-top: 1px solid var(--background-modifier-border); margin: 4px 0;';
+        applyCssText(dividerEl, 'border: none; border-top: 1px solid var(--background-modifier-border); margin: 4px 0;');
         for (const group of groups) addOption(group.name, group.id, 'folder');
 
-        popover.style.visibility = 'hidden';
+        popover.setCssProps({ 'visibility': 'hidden' });
         document.body.appendChild(popover);
 
         const rect   = trigger.getBoundingClientRect();
@@ -546,9 +565,9 @@ export function renderFolderDropdown(
         let top = rect.bottom + 6;
         if (top + popH + margin > vh) top = Math.max(margin, rect.top - popH - 6);
 
-        popover.style.top        = `${top}px`;
-        popover.style.left       = `${left}px`;
-        popover.style.visibility = 'visible';
+        popover.setCssProps({ 'top': `${top}px` });
+        popover.setCssProps({ 'left': `${left}px` });
+        popover.setCssProps({ 'visibility': 'visible' });
 
         setTimeout(() => {
             document.addEventListener('click',     onOutsideClick);

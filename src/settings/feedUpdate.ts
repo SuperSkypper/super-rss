@@ -1,9 +1,9 @@
 import { App, Notice, normalizePath } from 'obsidian';
 import RssPlugin, { FeedConfig, resolveFeedPath } from '../main';
-import { fetchAndExtract, fetchYoutubeDuration, fetchFullContent } from './feedExtractor';
+import { RawFeedItem, fetchAndExtract, fetchYoutubeDuration, fetchFullContent } from './feedExtractor';
 import { processItems, sanitizeFileName } from './feedProcessor';
 import { saveFeedItem, applyTemplate } from './feedSaver';
-import { cleanupOldFiles, deleteLiveArticlesForFeed, runAutoCleanup, FileMeta, resolveLinkFromFile, readPubDateFromFrontmatter } from './feedDelete';
+import { deleteLiveArticlesForFeed, runAutoCleanup, FileMeta, resolveLinkFromFile, readPubDateFromFrontmatter } from './feedDelete';
 import { loadAutoDatabase, saveAutoDatabase, loadUserDatabase, isKnown, AutoDatabase } from './feedDatabase';
 import { tagDuplicatesInVault } from './feedDuplicate';
 import { extractImageUrl, upgradeYoutubeThumbnail } from './imageHandler';
@@ -19,6 +19,21 @@ interface LockData {
     startedAt:  number;
 }
 
+interface AtomLink {
+    $?: {
+        href?: string;
+    };
+}
+
+function isAtomLink(value: unknown): value is AtomLink {
+    return typeof value === 'object' && value !== null;
+}
+
+function getRawItemLink(rawItem: RawFeedItem): string {
+    if (typeof rawItem.link === 'string') return rawItem.link;
+    if (isAtomLink(rawItem.link) && typeof rawItem.link.$?.href === 'string') return rawItem.link.$.href;
+    return '';
+}
 
 function getLockPath(app: App): string {
     return normalizePath(`${app.vault.configDir}/plugins/${PLUGIN_ID}/${LOCK_FILE}`);
@@ -72,6 +87,36 @@ export async function releaseLock(app: App): Promise<void> {
 
 // ── Update a single feed ──────────────────────────────────────────────────────
 
+async function collectRssFileCache(app: App, plugin: RssPlugin): Promise<FileMeta[]> {
+    const rssFolderPath = normalizePath(plugin.settings.folderPath);
+    const allMdFiles = app.vault.getMarkdownFiles().filter(f => f.path.startsWith(rssFolderPath + '/'));
+    const totalFiles = allMdFiles.length;
+    const fileCache: FileMeta[] = [];
+
+    for (let i = 0; i < totalFiles; i++) {
+        if (plugin.stopRequested) break;
+        const f = allMdFiles[i]!;
+        plugin.setStatusBarText(`Saving: ${i + 1}/${totalFiles}`, `Processing ${f.path}`);
+
+        const link = await resolveLinkFromFile(app, app.vault, f);
+        const pubDate = await readPubDateFromFrontmatter(app, app.vault, f);
+        fileCache.push({ file: f, link, pubDate, deleted: false });
+    }
+
+    return fileCache;
+}
+
+export async function cleanupBeforeUpdate(
+    app: App,
+    plugin: RssPlugin,
+    db: AutoDatabase,
+): Promise<number> {
+    const fileCache = await collectRssFileCache(app, plugin);
+    if (plugin.stopRequested) return 0;
+
+    return runAutoCleanup(app, plugin, db, fileCache);
+}
+
 export async function updateFeed(
     app:      App,
     plugin:   RssPlugin,
@@ -94,10 +139,7 @@ export async function updateFeed(
                 const batch = raw.items.slice(i, i + BATCH_SIZE);
                 await Promise.all(
                     batch.map(async rawItem => {
-                        const link =
-                            typeof rawItem.link === 'string'
-                                ? rawItem.link
-                                : (rawItem.link as any)?.$?.href ?? '';
+                        const link = getRawItemLink(rawItem);
                         if (link) {
                             rawItem.duration = await fetchYoutubeDuration(link);
                         }
@@ -160,7 +202,7 @@ export async function updateFeed(
         }
 
         if (saved > 0) {
-            console.log(`RSS: Saved ${saved} new items for ${feed.name}`);
+            console.debug(`RSS: Saved ${saved} new items for ${feed.name}`);
         }
 
         if (feed.deleteLives) {
@@ -191,7 +233,7 @@ export async function updateAllFeeds(
 
     const lockAcquired = await acquireLock(app);
     if (!lockAcquired) {
-        new Notice('RSS: Update already in progress.', 4000);
+        new Notice('RSS: update already in progress.', 4000);
         return;
     }
 
@@ -214,6 +256,12 @@ export async function updateAllFeeds(
         let totalSaved   = 0;
         let totalDeleted = 0;
         const db = await loadAutoDatabase(app);
+
+        try {
+            totalDeleted += await cleanupBeforeUpdate(app, plugin, db);
+        } catch (e) {
+            console.error('RSS: pre-update cleanup failed:', e);
+        }
 
         for (let i = 0; i < total; i++) {
             if (!plugin.isUpdating || plugin.stopRequested) break;
@@ -244,12 +292,7 @@ export async function updateAllFeeds(
 
             if (plugin.isUpdating && !plugin.stopRequested) {
                 try {
-                    totalDeleted += await runAutoCleanup(app, plugin, db, fileCache);
-                } catch (e) {
-                    console.error('RSS: cleanup failed:', e);
-                }
-                try {
-                    plugin.setStatusBarText('⏳ Checking Duplicates...');
+                    plugin.setStatusBarText('⏳ Checking duplicates...');
                     totalDeleted += await tagDuplicatesInVault(app, plugin, fileCache);
                 } catch (e) {
                     console.error('RSS: duplicate tagging failed:', e);

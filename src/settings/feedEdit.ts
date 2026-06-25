@@ -4,6 +4,26 @@ import { renderVariableReference } from './settingsTemplate';
 import { openEditFoldersModal, promptFolderName } from './editFolders';
 import { discardVaultFile } from './feedDelete';
 
+interface VaultWithConfig {
+    getConfig?: (key: string) => unknown;
+}
+
+function isStringArray(value: unknown): value is string[] {
+    return Array.isArray(value) && value.every(item => typeof item === 'string');
+}
+
+function applyCssText(element: HTMLElement, cssText: string): void {
+    const properties: Record<string, string> = {};
+    for (const declaration of cssText.split(';')) {
+        const separator = declaration.indexOf(':');
+        if (separator < 0) continue;
+        const property = declaration.slice(0, separator).trim();
+        const value = declaration.slice(separator + 1).trim();
+        if (property && value) properties[property] = value;
+    }
+    element.setCssProps(properties);
+}
+
 
 // ─── Device detection ─────────────────────────────────────────────────────────
 
@@ -48,26 +68,26 @@ export class FeedEditModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
 
-        this.modalEl.style.width         = '860px';
-        this.modalEl.style.maxWidth      = '95vw';
-        this.modalEl.style.height        = 'min(720px, 90vh)';
-        this.modalEl.style.maxHeight     = 'none';
-        this.modalEl.style.overflow      = 'hidden';
-        this.modalEl.style.display       = 'flex';
-        this.modalEl.style.flexDirection = 'column';
-        this.modalEl.style.position      = 'relative';
+        this.modalEl.setCssProps({ 'width': '860px' });
+        this.modalEl.setCssProps({ 'max-width': '95vw' });
+        this.modalEl.setCssProps({ 'height': 'min(720px, 90vh)' });
+        this.modalEl.setCssProps({ 'max-height': 'none' });
+        this.modalEl.setCssProps({ 'overflow': 'hidden' });
+        this.modalEl.setCssProps({ 'display': 'flex' });
+        this.modalEl.setCssProps({ 'flex-direction': 'column' });
+        this.modalEl.setCssProps({ 'position': 'relative' });
 
-        contentEl.style.cssText = 'display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; overflow: hidden; padding: 0;';
+        applyCssText(contentEl, 'display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; overflow: hidden; padding: 0;');
 
-        contentEl.createEl('h2', { text: 'Edit Feed Settings' });
+        contentEl.createEl('h2', { text: 'Edit feed settings' });
 
         const tabContainer = contentEl.createDiv();
-        tabContainer.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; flex-shrink: 0;';
+        applyCssText(tabContainer, 'display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; flex-shrink: 0;');
         const feedTabBtn   = tabContainer.createEl('button', { text: 'Feed' });
         const customTabBtn = tabContainer.createEl('button', { text: 'Custom' });
 
         const tabBody = contentEl.createDiv();
-        tabBody.style.cssText = 'flex: 1 1 0; min-height: 0; overflow-y: auto; overflow-x: hidden; padding-right: 6px; -webkit-overflow-scrolling: touch;';
+        applyCssText(tabBody, 'flex: 1 1 0; min-height: 0; overflow-y: auto; overflow-x: hidden; padding-right: 6px; -webkit-overflow-scrolling: touch;');
 
         const feedContent   = tabBody.createDiv();
         const customContent = tabBody.createDiv();
@@ -78,10 +98,10 @@ export class FeedEditModal extends Modal {
             const base     = 'padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 0.9em; border: 1px solid var(--background-modifier-border); transition: all 0.2s ease;';
             const inactive = 'background-color: var(--background-secondary-alt); color: var(--text-muted);';
             const active   = 'background-color: var(--interactive-accent); color: var(--text-on-accent); border-color: var(--interactive-accent);';
-            feedTabBtn.style.cssText   = `${base}${activeTab === 'feed'   ? active : inactive}`;
-            customTabBtn.style.cssText = `${base}${activeTab === 'custom' ? active : inactive}`;
-            feedContent.style.display   = activeTab === 'feed'   ? 'block' : 'none';
-            customContent.style.display = activeTab === 'custom' ? 'block' : 'none';
+            applyCssText(feedTabBtn, `${base}${activeTab === 'feed'   ? active : inactive}`);
+            applyCssText(customTabBtn, `${base}${activeTab === 'custom' ? active : inactive}`);
+            feedContent.setCssProps({ 'display': activeTab === 'feed'   ? 'block' : 'none' });
+            customContent.setCssProps({ 'display': activeTab === 'custom' ? 'block' : 'none' });
         };
 
         feedTabBtn.onclick   = () => { if (activeTab !== 'feed')   { activeTab = 'feed';   updateView(); } };
@@ -97,7 +117,7 @@ export class FeedEditModal extends Modal {
 
     private applyCardToSetting(setting: Setting) {
         const el = setting.settingEl;
-        el.style.cssText = `
+        applyCssText(el, `
             background: var(--background-secondary);
             border: 1px solid var(--background-modifier-border);
             border-radius: 10px;
@@ -108,10 +128,10 @@ export class FeedEditModal extends Modal {
             align-items: center;
             position: relative;
             overflow: visible;
-        `;
+        `);
         if (!isTouchDevice()) {
-            el.onmouseenter = () => { el.style.borderColor = 'var(--interactive-accent)'; };
-            el.onmouseleave = () => { el.style.borderColor = 'var(--background-modifier-border)'; };
+            el.onmouseenter = () => { el.setCssProps({ 'border-color': 'var(--interactive-accent)' }); };
+            el.onmouseleave = () => { el.setCssProps({ 'border-color': 'var(--background-modifier-border)' }); };
         }
     }
 
@@ -121,24 +141,24 @@ export class FeedEditModal extends Modal {
         container.empty();
 
         const nameSetting = new Setting(container)
-            .setName('Feed Name')
+            .setName('Feed name')
             .addText(t => {
                 t.setValue(this.feed.name || '')
                  .onChange(v => { this.feed.name = v; });
-                t.inputEl.style.fontSize = inputFontSize();
+                t.inputEl.setCssProps({ 'font-size': inputFontSize() });
             });
         this.applyCardToSetting(nameSetting);
 
-        const urlSetting = new Setting(container).setName('Feed URL');
+        const urlSetting = new Setting(container).setName('Feed address');
         this.applyCardToSetting(urlSetting);
-        urlSetting.settingEl.style.flexDirection = 'column';
-        urlSetting.settingEl.style.alignItems    = 'flex-start';
-        urlSetting.controlEl.style.width         = '100%';
-        urlSetting.controlEl.style.marginTop     = '10px';
+        urlSetting.settingEl.setCssProps({ 'flex-direction': 'column' });
+        urlSetting.settingEl.setCssProps({ 'align-items': 'flex-start' });
+        urlSetting.controlEl.setCssProps({ 'width': '100%' });
+        urlSetting.controlEl.setCssProps({ 'margin-top': '10px' });
 
         const urlInput = urlSetting.controlEl.createEl('input', { type: 'text' });
         urlInput.value          = this.feed.url || '';
-        urlInput.style.cssText  = `width: 100%; display: block; box-sizing: border-box; font-size: ${inputFontSize()};`;
+        applyCssText(urlInput, `width: 100%; display: block; box-sizing: border-box; font-size: ${inputFontSize()};`);
         urlInput.inputMode      = 'url';
         urlInput.autocomplete   = 'off';
         urlInput.autocapitalize = 'off';
@@ -176,11 +196,13 @@ export class FeedEditModal extends Modal {
 
         const groupSetting = new Setting(container)
             .setName('Folder')
-            .setDesc('Assign this feed to a folder. Leave as "No folder" to keep it loose.')
+            .setDesc('Assign this feed to a folder. Leave as no folder to keep it loose.')
             .addDropdown(dropdown => {
                 groupSelectEl = dropdown.selectEl;
                 dropdown.addOption('', 'No folder');
-                getGroups().forEach(g => dropdown.addOption(g.id, g.name));
+                for (const group of getGroups()) {
+                    dropdown.addOption(group.id, group.name);
+                }
                 dropdown.setValue(this.feed.groupId ?? '');
                 dropdown.onChange(v => {
                     this.feed.groupId = v === '' ? undefined : v;
@@ -189,11 +211,11 @@ export class FeedEditModal extends Modal {
 
         const addFolderBtn = document.createElement('button');
         addFolderBtn.title = 'New folder';
-        addFolderBtn.style.cssText = 'display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 5px; border: 1px solid var(--background-modifier-border); background: transparent; cursor: pointer; color: var(--text-muted); transition: all 0.12s ease; flex-shrink: 0; margin-right: 6px;';
-        addFolderBtn.addEventListener('mouseenter', () => { addFolderBtn.style.borderColor = 'var(--interactive-accent)'; addFolderBtn.style.color = 'var(--text-normal)'; });
-        addFolderBtn.addEventListener('mouseleave', () => { addFolderBtn.style.borderColor = 'var(--background-modifier-border)'; addFolderBtn.style.color = 'var(--text-muted)'; });
+        applyCssText(addFolderBtn, 'display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 5px; border: 1px solid var(--background-modifier-border); background: transparent; cursor: pointer; color: var(--text-muted); transition: all 0.12s ease; flex-shrink: 0; margin-right: 6px;');
+        addFolderBtn.addEventListener('mouseenter', () => { addFolderBtn.setCssProps({ 'border-color': 'var(--interactive-accent)' }); addFolderBtn.setCssProps({ 'color': 'var(--text-normal)' }); });
+        addFolderBtn.addEventListener('mouseleave', () => { addFolderBtn.setCssProps({ 'border-color': 'var(--background-modifier-border)' }); addFolderBtn.setCssProps({ 'color': 'var(--text-muted)' }); });
         const addFolderIcon = addFolderBtn.createDiv();
-        addFolderIcon.style.cssText = 'display: flex; align-items: center; width: 14px; height: 14px;';
+        applyCssText(addFolderIcon, 'display: flex; align-items: center; width: 14px; height: 14px;');
         setIcon(addFolderIcon, 'folder-plus');
         addFolderBtn.addEventListener('click', () => {
             void (async () => {
@@ -210,11 +232,11 @@ export class FeedEditModal extends Modal {
 
         const editFoldersBtn = groupSetting.controlEl.createEl('button');
         editFoldersBtn.title = 'Edit folders';
-        editFoldersBtn.style.cssText = 'display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 5px; border: 1px solid var(--background-modifier-border); background: transparent; cursor: pointer; color: var(--text-muted); transition: all 0.12s ease; flex-shrink: 0; margin-left: 6px;';
-        editFoldersBtn.addEventListener('mouseenter', () => { editFoldersBtn.style.borderColor = 'var(--interactive-accent)'; editFoldersBtn.style.color = 'var(--text-normal)'; });
-        editFoldersBtn.addEventListener('mouseleave', () => { editFoldersBtn.style.borderColor = 'var(--background-modifier-border)'; editFoldersBtn.style.color = 'var(--text-muted)'; });
+        applyCssText(editFoldersBtn, 'display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 5px; border: 1px solid var(--background-modifier-border); background: transparent; cursor: pointer; color: var(--text-muted); transition: all 0.12s ease; flex-shrink: 0; margin-left: 6px;');
+        editFoldersBtn.addEventListener('mouseenter', () => { editFoldersBtn.setCssProps({ 'border-color': 'var(--interactive-accent)' }); editFoldersBtn.setCssProps({ 'color': 'var(--text-normal)' }); });
+        editFoldersBtn.addEventListener('mouseleave', () => { editFoldersBtn.setCssProps({ 'border-color': 'var(--background-modifier-border)' }); editFoldersBtn.setCssProps({ 'color': 'var(--text-muted)' }); });
         const editFoldersIcon = editFoldersBtn.createDiv();
-        editFoldersIcon.style.cssText = 'display: flex; align-items: center; width: 14px; height: 14px;';
+        applyCssText(editFoldersIcon, 'display: flex; align-items: center; width: 14px; height: 14px;');
         setIcon(editFoldersIcon, 'folder-edit');
         editFoldersBtn.addEventListener('click', () => {
             openEditFoldersModal(this.app, this.plugin, () => { refreshGroupDropdown(); });
@@ -225,13 +247,13 @@ export class FeedEditModal extends Modal {
         const nameInputRef = nameSetting.controlEl.querySelector<HTMLInputElement>('input[type="text"]');
 
         const folderSetting = new Setting(container)
-            .setName('Custom Subfolder (optional)')
+            .setName('Custom subfolder (optional)')
             .setDesc('Extra subfolder inside the assigned folder (or main RSS folder if no folder assigned).')
             .addText(t => {
                 t.setPlaceholder(this.feed.name || 'Subfolder name')
                  .setValue(this.feed.folder || '')
                  .onChange(v => { this.feed.folder = v; });
-                t.inputEl.style.fontSize = inputFontSize();
+                t.inputEl.setCssProps({ 'font-size': inputFontSize() });
 
                 if (nameInputRef) {
                     nameInputRef.addEventListener('input', () => {
@@ -242,10 +264,10 @@ export class FeedEditModal extends Modal {
         this.applyCardToSetting(folderSetting);
 
         const timingHeader = container.createEl('h4', { text: 'Timing' });
-        timingHeader.style.cssText = 'margin: 20px 0 8px; color: var(--text-muted); font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.05em;';
+        applyCssText(timingHeader, 'margin: 20px 0 8px; color: var(--text-muted); font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.05em;');
 
         const intervalSetting = new Setting(container)
-            .setName('Update Interval')
+            .setName('Update interval')
             .setDesc('Overrides the global interval for this feed. Leave blank to use global.')
             .addText(text => {
                 text.setPlaceholder(String(this.plugin.settings.updateIntervalValue ?? 30))
@@ -253,7 +275,7 @@ export class FeedEditModal extends Modal {
                     .onChange(v => {
                         this.feed.updateIntervalValue = v.trim() === '' ? undefined : Number(v) || undefined;
                     });
-                text.inputEl.style.fontSize = inputFontSize();
+                text.inputEl.setCssProps({ 'font-size': inputFontSize() });
                 text.inputEl.inputMode      = 'numeric';
             })
             .addDropdown(dropdown => dropdown
@@ -270,7 +292,7 @@ export class FeedEditModal extends Modal {
         const autoDeleteEnabled = this.feed.autoCleanupValue != null;
 
         const autoDeleteToggle = new Setting(container)
-            .setName('Auto Delete Old Articles')
+            .setName('Auto delete old articles')
             .setDesc('Overrides global cleanup settings for this feed.')
             .addToggle(toggle => toggle
                 .setValue(autoDeleteEnabled)
@@ -284,7 +306,7 @@ export class FeedEditModal extends Modal {
 
         if (autoDeleteEnabled) {
             const deleteAfterSetting = new Setting(container)
-                .setName('Delete Articles Older Than')
+                .setName('Delete articles older than')
                 .setDesc('Articles older than this will be deleted (keeps feed).')
                 .addText(text => {
                     text.setPlaceholder(String(this.plugin.settings.autoCleanupValue ?? 30))
@@ -292,7 +314,7 @@ export class FeedEditModal extends Modal {
                         .onChange(v => {
                             this.feed.autoCleanupValue = v.trim() === '' ? undefined : Number(v) || undefined;
                         });
-                    text.inputEl.style.fontSize = inputFontSize();
+                    text.inputEl.setCssProps({ 'font-size': inputFontSize() });
                     text.inputEl.inputMode      = 'numeric';
                 })
                 .addDropdown(dropdown => dropdown
@@ -305,15 +327,15 @@ export class FeedEditModal extends Modal {
                         this.feed.autoCleanupUnit = v as 'minutes' | 'hours' | 'days' | 'months';
                     }));
             this.applyCardToSetting(deleteAfterSetting);
-            deleteAfterSetting.settingEl.style.marginLeft = '20px';
-            deleteAfterSetting.settingEl.style.borderLeft = '3px solid var(--interactive-accent)';
+            deleteAfterSetting.settingEl.setCssProps({ 'margin-left': '20px' });
+            deleteAfterSetting.settingEl.setCssProps({ 'border-left': '3px solid var(--interactive-accent)' });
 
             const globalDateLabel = this.plugin.settings.autoCleanupDateField === 'datepub'
                 ? 'Global ({{datepublished}})'
                 : 'Global ({{datesaved}})';
 
             const criterionSetting = new Setting(container)
-                .setName('Date Criterion')
+                .setName('Date criterion')
                 .setDesc('Which date field to use for this feed.')
                 .addDropdown(dropdown => dropdown
                     .addOption('global',    globalDateLabel)
@@ -324,16 +346,16 @@ export class FeedEditModal extends Modal {
                         this.feed.autoCleanupDateField = v as 'global' | 'datepub' | 'datesaved';
                     }));
             this.applyCardToSetting(criterionSetting);
-            criterionSetting.settingEl.style.marginLeft = '20px';
-            criterionSetting.settingEl.style.borderLeft = '3px solid var(--interactive-accent)';
+            criterionSetting.settingEl.setCssProps({ 'margin-left': '20px' });
+            criterionSetting.settingEl.setCssProps({ 'border-left': '3px solid var(--interactive-accent)' });
         }
 
         const youtubeHeader = container.createEl('h4', { text: 'YouTube' });
-        youtubeHeader.style.cssText = 'margin: 8px 0; color: var(--text-muted); font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.05em;';
+        applyCssText(youtubeHeader, 'margin: 8px 0; color: var(--text-muted); font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.05em;');
 
         const tagShortsSetting = new Setting(container)
-            .setName('Tag YouTube Shorts')
-            .setDesc('Automatically add the "shorts" tag to YouTube Shorts articles. Overrides global setting.')
+            .setName('Tag shorts')
+            .setDesc('Automatically add the "shorts" tag to shorts articles. Overrides global setting.')
             .addDropdown(d => d
                 .addOption('global', `Use global (${this.plugin.settings.tagShortsGlobal ? 'on' : 'off'})`)
                 .addOption('on',     'Always on')
@@ -348,8 +370,8 @@ export class FeedEditModal extends Modal {
         this.applyCardToSetting(tagShortsSetting);
 
         const skipShortsSetting = new Setting(container)
-            .setName('Skip YouTube Shorts')
-            .setDesc('Never save articles from YouTube Shorts URLs. Overrides global setting.')
+            .setName('Skip shorts')
+            .setDesc('Never save articles from shorts links. Overrides global setting.')
             .addDropdown(d => d
                 .addOption('global', `Use global (${this.plugin.settings.skipShortsGlobal ? 'on' : 'off'})`)
                 .addOption('on',     'Always skip')
@@ -364,7 +386,7 @@ export class FeedEditModal extends Modal {
         this.applyCardToSetting(skipShortsSetting);
 
         const deleteLivesSetting = new Setting(container)
-            .setName('Delete Live Stream Articles')
+            .setName('Delete live stream articles')
             .setDesc('When enabled, automatically deletes articles tagged as "live" in this feed.')
             .addToggle(toggle => toggle
                 .setValue(this.feed.deleteLives ?? false)
@@ -397,7 +419,9 @@ export class FeedEditModal extends Modal {
             const cache = metadataCache.getFileCache(file);
             const tags  = [
                 ...(cache?.tags?.map(t => t.tag) ?? []),
-                ...(cache?.frontmatter?.tags ?? []),
+                ...(isStringArray((cache?.frontmatter as Record<string, unknown> | undefined)?.tags)
+                    ? (cache?.frontmatter as Record<string, unknown>).tags as string[]
+                    : []),
             ].map((t: string) => t.replace(/^#/, '').toLowerCase());
 
             if (tags.includes('live')) {
@@ -426,7 +450,7 @@ export class FeedEditModal extends Modal {
         if (files.length === 0) return;
 
         // @ts-ignore — internal Obsidian config property
-        const useSystem: boolean = (this.app.vault as any).getConfig?.('trashOption') !== 'local';
+        const useSystem = (this.app.vault as unknown as VaultWithConfig).getConfig?.('trashOption') !== 'local';
 
         // Files are trashed without updating the DB — on the next update, saveFeedItem
         // will detect that the file no longer exists (vault.adapter.exists check) and
@@ -454,7 +478,7 @@ export class FeedEditModal extends Modal {
         renderVariableReference(container);
 
         const templatesContainer = container.createDiv();
-        templatesContainer.style.cssText = 'margin-top: 4px;';
+        applyCssText(templatesContainer, 'margin-top: 4px;');
 
         this.renderCustomField(templatesContainer, {
             icon:        '📄',
@@ -510,45 +534,45 @@ export class FeedEditModal extends Modal {
         }
     ): void {
         const wrapper = container.createDiv();
-        wrapper.style.cssText = `
+        applyCssText(wrapper, `
             background: var(--background-secondary);
             border: 1px solid var(--background-modifier-border);
             border-radius: 10px;
             padding: 12px 16px;
             margin-bottom: 12px;
             transition: border-color 0.2s ease;
-        `;
+        `);
         if (!isTouchDevice()) {
-            wrapper.onmouseenter = () => { wrapper.style.borderColor = 'var(--interactive-accent)'; };
-            wrapper.onmouseleave = () => { wrapper.style.borderColor = 'var(--background-modifier-border)'; };
+            wrapper.onmouseenter = () => { wrapper.setCssProps({ 'border-color': 'var(--interactive-accent)' }); };
+            wrapper.onmouseleave = () => { wrapper.setCssProps({ 'border-color': 'var(--background-modifier-border)' }); };
         }
 
         const header = wrapper.createDiv();
-        header.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 4px;';
+        applyCssText(header, 'display: flex; align-items: center; gap: 8px; margin-bottom: 4px;');
         header.createEl('span', { text: opts.icon });
 
         const titleEl = header.createEl('span', { text: opts.title });
-        titleEl.style.cssText = 'font-weight: 600; font-size: 0.88em; color: var(--text-normal);';
+        applyCssText(titleEl, 'font-weight: 600; font-size: 0.88em; color: var(--text-normal);');
 
         const desc = wrapper.createEl('p', { text: opts.desc });
-        desc.style.cssText = 'color: var(--text-muted); font-size: 0.82em; margin: 0 0 8px;';
+        applyCssText(desc, 'color: var(--text-muted); font-size: 0.82em; margin: 0 0 8px;');
 
         if (opts.type === 'input') {
             const input = wrapper.createEl('input', { type: 'text' });
             input.placeholder   = opts.placeholder;
             input.value         = opts.value;
-            input.style.cssText = `width: 100%; box-sizing: border-box; font-family: var(--font-monospace); font-size: ${inputFontSize()};`;
+            applyCssText(input, `width: 100%; box-sizing: border-box; font-family: var(--font-monospace); font-size: ${inputFontSize()};`);
             input.oninput = () => opts.onChange(input.value);
         } else {
             const textarea = wrapper.createEl('textarea');
             textarea.placeholder   = opts.placeholder;
             textarea.value         = opts.value;
-            textarea.style.cssText = `
+            applyCssText(textarea, `
                 width: 100%; box-sizing: border-box;
                 font-family: var(--font-monospace);
                 font-size: ${inputFontSize()};
                 height: 120px; min-height: 80px; resize: vertical;
-            `;
+            `);
             textarea.oninput = () => opts.onChange(textarea.value);
         }
     }
@@ -557,16 +581,16 @@ export class FeedEditModal extends Modal {
 
     private renderFooter(contentEl: HTMLElement) {
         const footer = contentEl.createDiv();
-        footer.style.cssText = 'margin-top: 12px; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center;';
+        applyCssText(footer, 'margin-top: 12px; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center;');
 
         const leftSide = footer.createDiv();
-        leftSide.style.cssText = 'display: flex; gap: 8px;';
+        applyCssText(leftSide, 'display: flex; gap: 8px;');
 
         const makeIconBtn = (container: HTMLElement, icon: string, label: string, cls?: string): HTMLButtonElement => {
             const btn = container.createEl('button', cls ? { cls } : {});
-            btn.style.cssText = 'display: flex; align-items: center; gap: 6px;';
+            applyCssText(btn, 'display: flex; align-items: center; gap: 6px;');
             const iconEl = btn.createDiv();
-            iconEl.style.cssText = 'display: flex; align-items: center; width: 14px; height: 14px; flex-shrink: 0;';
+            applyCssText(iconEl, 'display: flex; align-items: center; width: 14px; height: 14px; flex-shrink: 0;');
             setIcon(iconEl, icon);
             btn.createSpan({ text: label });
             return btn;
@@ -601,7 +625,7 @@ export class FeedEditModal extends Modal {
         }
 
         const rightSide = footer.createDiv();
-        rightSide.style.cssText = 'display: flex; gap: 10px;';
+        applyCssText(rightSide, 'display: flex; gap: 10px;');
 
         const cancelBtn = rightSide.createEl('button', { text: 'Cancel' });
         cancelBtn.onclick = () => this.close();
@@ -610,33 +634,26 @@ export class FeedEditModal extends Modal {
         saveBtn.onclick = () => {
             void (async () => {
             const overlay = this.modalEl.createDiv();
-            overlay.style.cssText = `
+            applyCssText(overlay, `
                 position: absolute; inset: 0;
                 background: rgba(0, 0, 0, 0.45);
                 border-radius: inherit;
                 display: flex; flex-direction: column;
                 align-items: center; justify-content: center;
                 gap: 12px; z-index: 9999;
-            `;
+            `);
 
             const spinner = overlay.createDiv();
-            spinner.style.cssText = `
+            applyCssText(spinner, `
                 width: 32px; height: 32px;
                 border: 3px solid rgba(255,255,255,0.2);
                 border-top-color: var(--interactive-accent);
                 border-radius: 50%;
                 animation: rss-spin 0.7s linear infinite;
-            `;
+            `);
 
-            const label = overlay.createEl('span', { text: 'Saving Settings...' });
-            label.style.cssText = 'color: white; font-size: 0.9em; opacity: 0.85;';
-
-            if (!document.getElementById('rss-spin-style')) {
-                const style = document.createElement('style');
-                style.id = 'rss-spin-style';
-                style.textContent = '@keyframes rss-spin { to { transform: rotate(360deg); } }';
-                document.head.appendChild(style);
-            }
+            const label = overlay.createEl('span', { text: 'Saving settings...' });
+            applyCssText(label, 'color: white; font-size: 0.9em; opacity: 0.85;');
 
             saveBtn.disabled   = true;
             cancelBtn.disabled = true;
@@ -649,6 +666,19 @@ export class FeedEditModal extends Modal {
                 saveBtn.disabled   = false;
                 cancelBtn.disabled = false;
             }
+
+function applyCssText(element: HTMLElement, cssText: string): void {
+    const properties: Record<string, string> = {};
+    for (const declaration of cssText.split(';')) {
+        const separator = declaration.indexOf(':');
+        if (separator < 0) continue;
+        const property = declaration.slice(0, separator).trim();
+        const value = declaration.slice(separator + 1).trim();
+        if (property && value) properties[property] = value;
+    }
+    element.setCssProps(properties);
+}
+
 
             this.close();
             })();
@@ -677,16 +707,16 @@ export class ConfirmDeleteModal extends Modal {
 
     onOpen() {
         const { contentEl } = this;
-        contentEl.createEl('h2', { text: 'Permanently Delete Feed?' });
+        contentEl.createEl('h2', { text: 'Permanently delete feed?' });
         contentEl.createEl('p', { text: 'This action cannot be undone. The feed will be permanently removed.' });
 
         const footer = contentEl.createDiv();
-        footer.style.cssText = 'display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;';
+        applyCssText(footer, 'display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;');
 
         const cancelBtn = footer.createEl('button', { text: 'Cancel' });
         cancelBtn.onclick = () => this.close();
 
-        const deleteBtn = footer.createEl('button', { text: 'Delete Feed', cls: 'mod-warning' });
+        const deleteBtn = footer.createEl('button', { text: 'Delete feed', cls: 'mod-warning' });
         deleteBtn.onclick = () => {
             void (async () => {
                 await this.onConfirm();

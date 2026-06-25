@@ -59,6 +59,7 @@ export type ImageLocation = 'obsidian' | 'vault' | 'current' | 'subfolder' | 'sp
 export type DeleteBehavior = 'obsidian' | 'direct' | 'obsidian-trash' | 'system-trash';
 
 export interface PluginSettings {
+    /** @deprecated Auto-update enabled is stored per device. Kept for migration. */
     pluginEnabled:               boolean;
     folderPath:                  string;
     template:                    string;
@@ -89,10 +90,15 @@ export interface PluginSettings {
     showStatusBar:               boolean;
     ribbonUpdate:                boolean;
     ribbonAdd:                   boolean;
+    ribbonCleanup:               boolean;
     markAsReadEnabled:              boolean;
     markAsReadLinkProperty:         string;
     markAsReadCheckboxProperty:     string;
     markAsReadDeleteArticles:       boolean;
+}
+
+export interface PluginLocalSettings {
+    autoUpdateEnabled: boolean;
 }
 
 // ─── Template constants ───────────────────────────────────────────────────────
@@ -168,6 +174,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
     showStatusBar:               true,
     ribbonUpdate:                true,
     ribbonAdd:                   true,
+    ribbonCleanup:               true,
     markAsReadEnabled:              true,
     markAsReadLinkProperty:         'Mark as Read',
     markAsReadCheckboxProperty:     'Read',
