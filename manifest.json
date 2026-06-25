@@ -3,7 +3,7 @@
 	"name": "Super RSS",
 	"version": "0.0.6",
 	"minAppVersion": "1.4.0",
-	"description": "The Super RSS Plugin for Obsidian.",
+	"description": "Save RSS feed articles as notes with cleanup, templates, and read tracking.",
 	"author": "@SuperSkypper",
 	"authorUrl": "https://x.com/SuperSkypper",
 	"fundingUrl": "https://ko-fi.com/superskypper",
