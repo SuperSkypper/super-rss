@@ -1,11 +1,11 @@
-# Changelog - v0.0.8
+# Changelog - v0.0.7
 
 ## Community review fixes
 - Updated the local Community validation script to use `eslint-plugin-obsidianmd@0.3.0` and check `src/**/*.ts` plus `manifest.json`.
 - Removed the remaining direct static style assignments flagged by `obsidianmd/no-static-styles-assignment`.
 - Switched browser timer and storage references to the `window` APIs required by the Community lint rules.
 - Raised `minAppVersion` to `1.4.4` to match the `FileManager.processFrontMatter` API used for read tracking.
-- Replaced the removed `0.0.7` attempt with this corrected `0.0.8` release.
+- Replaced the removed `0.0.7` attempt with this corrected `0.0.7` release.
 - Kept release artifact attestations enabled for the distributed assets.
 
 # Changelog - v0.0.6
