@@ -413,7 +413,7 @@ export function renderGeneralTab(
         if (plugin.settings.imageLocation === 'obsidian') {
             const infoSetting = new Setting(contentEl)
                 .setName('Using Obsidian attachment settings')
-                .setDesc('See Obsidian settings → Files and links → Default location for new attachments.'); // eslint-disable-line obsidianmd/ui/sentence-case -- Obsidian navigation labels
+                .setDesc('Uses the default attachment location from app settings.');
             applyCardStyle(infoSetting);
             applyIndent(infoSetting.settingEl, 2);
             setDynamicCss(infoSetting.settingEl, { opacity: '0.7' });

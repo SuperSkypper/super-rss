@@ -56,19 +56,8 @@ interface MetadataCacheWithPropertyInfos extends MetadataCache {
 
 
 export async function copyToClipboard(text: string): Promise<void> {
-    if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-        return;
-    }
-    const textArea = document.createElement('textarea');
-    textArea.value = text;
-    applyCssText(textArea, 'position:fixed;top:-9999px;left:-9999px;opacity:0;');
-    document.body.appendChild(textArea);
-    textArea.focus();
-    textArea.select();
-    const ok = document.execCommand('copy'); // eslint-disable-line @typescript-eslint/no-deprecated
-    document.body.removeChild(textArea);
-    if (!ok) throw new Error('execCommand copy failed');
+    if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+    await navigator.clipboard.writeText(text);
 }
 
 // ─── Device detection ─────────────────────────────────────────────────────────
