@@ -636,7 +636,6 @@ export function renderGeneralTab(
                 .setDesc(`Permanently removes all ${label} entries from the database file.`)
                 .addButton(btn => {
                     btn.setButtonText(`Purge ${label} entries`)
-                        .setWarning()
                         .onClick(async () => {
                             if (!confirming) {
                                 confirming = true;

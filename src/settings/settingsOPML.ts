@@ -62,14 +62,14 @@ function buildOpmlXml(plugin: RssPlugin): string {
 function downloadOpml(xml: string): void {
     const blob = new Blob([xml], { type: 'text/xml' });
     const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
+    const a    = activeDocument.createElement('a');
     a.href     = url;
     a.download = `rss-feeds-${new Date().toISOString().slice(0, 10)}.opml`;
     try {
-        document.body.appendChild(a);
+        activeDocument.body.appendChild(a);
         a.click();
     } finally {
-        document.body.removeChild(a);
+        activeDocument.body.removeChild(a);
         URL.revokeObjectURL(url);
     }
 }
@@ -362,17 +362,17 @@ export function renderOpmlTab(
         .addButton(btn => btn
             .setButtonText('Import feeds')
             .onClick(() => {
-                const input = document.createElement('input');
+                const input = activeDocument.createElement('input');
                 input.type   = 'file';
                 input.accept = '.opml,.xml';
 
                 // FIX: Move removeChild INSIDE onchange.
-                // Previously, document.body.removeChild(input) was called immediately after
+                // Previously.body.removeChild(input) was called immediately after
                 // input.click(), which caused the iOS Safari file picker to fail — the input
                 // element must remain in the DOM until the user selects a file and onchange fires.
                 input.onchange = (e: Event) => {
                     // Safe to remove now — user has already interacted with the file picker
-                    if (document.body.contains(input)) document.body.removeChild(input);
+                    if (activeDocument.body.contains(input)) activeDocument.body.removeChild(input);
 
                     const file = (e.target as HTMLInputElement).files?.[0];
                     if (!file) return;
@@ -399,12 +399,12 @@ export function renderOpmlTab(
                     window.removeEventListener('focus', onWindowFocus);
                     // Give onchange time to fire first, then clean up if still in DOM
                     window.setTimeout(() => {
-                        if (document.body.contains(input)) document.body.removeChild(input);
+                        if (activeDocument.body.contains(input)) activeDocument.body.removeChild(input);
                     }, 500);
                 };
                 window.addEventListener('focus', onWindowFocus);
 
-                document.body.appendChild(input);
+                activeDocument.body.appendChild(input);
                 input.click();
             }));
     applyCardStyle(importSetting);

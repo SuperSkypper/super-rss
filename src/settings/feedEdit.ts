@@ -5,10 +5,6 @@ import { openEditFoldersModal, promptFolderName } from './editFolders';
 import { discardVaultFile } from './feedDelete';
 import { setDynamicCss } from "../utils/css";
 
-interface VaultWithConfig {
-    getConfig?: (key: string) => unknown;
-}
-
 function isStringArray(value: unknown): value is string[] {
     return Array.isArray(value) && value.every(item => typeof item === 'string');
 }
@@ -210,7 +206,7 @@ export class FeedEditModal extends Modal {
                 });
             });
 
-        const addFolderBtn = document.createElement('button');
+        const addFolderBtn = activeDocument.createElement('button');
         addFolderBtn.title = 'New folder';
         applyCssText(addFolderBtn, 'display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 5px; border: 1px solid var(--background-modifier-border); background: transparent; cursor: pointer; color: var(--text-muted); transition: all 0.12s ease; flex-shrink: 0; margin-right: 6px;');
         addFolderBtn.addEventListener('mouseenter', () => { setDynamicCss(addFolderBtn, { 'border-color': 'var(--interactive-accent)' }); setDynamicCss(addFolderBtn, { 'color': 'var(--text-normal)' }); });
@@ -445,13 +441,10 @@ export class FeedEditModal extends Modal {
     // ── Move feed articles to trash ───────────────────────────────────────────
 
     private async moveFeedArticlesToTrash(): Promise<void> {
-        const { vault } = this.plugin.app;
+        const { vault, fileManager } = this.plugin.app;
         const feedPath = resolveFeedPath(this.feed, this.plugin.settings);
         const files = vault.getMarkdownFiles().filter(f => f.path.startsWith(feedPath + '/'));
         if (files.length === 0) return;
-
-        // @ts-ignore — internal Obsidian config property
-        const useSystem = (this.app.vault as unknown as VaultWithConfig).getConfig?.('trashOption') !== 'local';
 
         // Files are trashed without updating the DB — on the next update, saveFeedItem
         // will detect that the file no longer exists (vault.adapter.exists check) and
@@ -461,7 +454,7 @@ export class FeedEditModal extends Modal {
         let movedCount = 0;
         for (const file of files) {
             try {
-                await vault.trash(file, useSystem);
+                await fileManager.trashFile(file);
                 movedCount++;
             } catch (e) {
                 console.error(`RSS: Failed to trash "${file.path}":`, e);

@@ -9,65 +9,59 @@ If your plugin does not need CSS, delete this file.
 
 @media (max-width: 560px), (hover: none) and (pointer: coarse) {
 	.rss-feed-card {
-		align-items: flex-start !important;
-		column-gap: 0 !important;
-		flex-wrap: wrap !important;
+		align-items: flex-start;
+		flex-wrap: wrap;
+		gap: 8px 0;
 		min-height: 112px;
-		padding: 10px 12px !important;
-		row-gap: 8px !important;
+		padding: 10px 12px;
 	}
 
 	.rss-feed-card-select,
 	.rss-feed-card-toggle {
-		height: 32px !important;
-		min-width: 36px !important;
-		width: 36px !important;
+		height: 32px;
+		min-width: 36px;
+		width: 36px;
 	}
 
 	.rss-feed-card-separator {
-		display: none !important;
+		display: none;
 	}
 
 	.rss-feed-card-info {
 		align-items: center;
 		display: flex;
 		min-height: 32px;
-		width: calc(100% - 72px) !important;
+		width: calc(100% - 72px);
 	}
 
 	.rss-feed-card-name {
-		font-size: 0.98em !important;
+		font-size: 0.98em;
 		line-height: 1.25;
 		max-width: 100%;
 	}
 
 	.rss-feed-card-actions {
 		border-top: 1px solid var(--background-modifier-border);
-		flex: 1 0 100% !important;
+		flex: 1 0 100%;
 		flex-wrap: nowrap;
-		gap: 2px !important;
+		gap: 2px;
 		justify-content: flex-end;
-		margin-left: 0 !important;
+		margin-left: 0;
 		min-width: 0;
 		overflow-x: auto;
 		padding-top: 8px;
-		scrollbar-width: none;
-	}
-
-	.rss-feed-card-actions::-webkit-scrollbar {
-		display: none;
 	}
 
 	.rss-feed-card-actions button {
-		height: 34px !important;
-		min-width: 34px !important;
-		width: 34px !important;
+		height: 34px;
+		min-width: 34px;
+		width: 34px;
 	}
 
 	.rss-feed-card-actions > div[title*="Skip Shorts"],
 	.rss-feed-card-actions > div[title*="Delete Lives"] {
-		height: 28px !important;
-		width: 28px !important;
+		height: 28px;
+		width: 28px;
 	}
 
 	.rss-feed-card-actions > div[title="Change folder"] {

@@ -30,7 +30,7 @@
 		"@mozilla/readability": "^0.6.0",
 		"defuddle": "^0.19.1",
 		"linkedom": "^0.18.12",
-		"obsidian": "latest",
+		"obsidian": "^1.13.1",
 		"xml2js": "^0.6.2"
 	}
 }

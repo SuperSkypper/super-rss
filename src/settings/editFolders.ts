@@ -25,7 +25,7 @@ export function sortGroups(groups: FeedGroup[]): FeedGroup[] {
 // ─── Global loading overlay ───────────────────────────────────────────────────
 
 export function showGlobalLoading(message = 'Saving...'): () => void {
-    const overlay = document.body.createDiv();
+    const overlay = activeDocument.body.createDiv();
     overlay.id = 'rss-global-loading';
     applyCssText(overlay, `
         position: fixed; inset: 0; z-index: 99999;
@@ -493,8 +493,8 @@ export function renderFolderDropdown(
         if (!popover) return;
         popover.remove();
         popover = null;
-        document.removeEventListener('click',     onOutsideClick);
-        document.removeEventListener('touchstart', onOutsideTouch);
+        activeDocument.removeEventListener('click',     onOutsideClick);
+        activeDocument.removeEventListener('touchstart', onOutsideTouch);
     };
 
     const onOutsideClick = (ev: MouseEvent) => {
@@ -507,7 +507,7 @@ export function renderFolderDropdown(
     };
 
     const openPopover = () => {
-        popover = document.body.createDiv();
+        popover = activeDocument.body.createDiv();
         applyCssText(popover, `
             position: fixed; z-index: 9999;
             background: var(--background-primary);
@@ -552,7 +552,7 @@ export function renderFolderDropdown(
         for (const group of groups) addOption(group.name, group.id, 'folder');
 
         setDynamicCss(popover, { 'visibility': 'hidden' });
-        document.body.appendChild(popover);
+        activeDocument.body.appendChild(popover);
 
         const rect   = trigger.getBoundingClientRect();
         const popW   = popover.offsetWidth;
@@ -571,8 +571,8 @@ export function renderFolderDropdown(
         setDynamicCss(popover, { 'visibility': 'visible' });
 
         window.setTimeout(() => {
-            document.addEventListener('click',     onOutsideClick);
-            document.addEventListener('touchstart', onOutsideTouch, { passive: true });
+            activeDocument.addEventListener('click',     onOutsideClick);
+            activeDocument.addEventListener('touchstart', onOutsideTouch, { passive: true });
         }, 0);
     };
 

@@ -153,7 +153,7 @@ function createVirtualList(
             const feed = items[i];
             if (!feed) continue;
 
-            const el = document.createElement('div');
+            const el = activeDocument.createElement('div');
             applyCssText(el, `position:absolute;top:${i * cardHeight}px;left:0;right:0;`);
             renderCard(feed, el);
             itemsEl.appendChild(el);
@@ -879,10 +879,10 @@ function renderFeedCard(
 
         badge.addEventListener('click', (e) => {
             e.stopPropagation();
-            const existing = document.querySelector('.rss-folder-popover');
+            const existing = activeDocument.querySelector('.rss-folder-popover');
             if (existing) { existing.remove(); return; }
 
-            const pop = document.body.createDiv({ cls: 'rss-folder-popover' });
+            const pop = activeDocument.body.createDiv({ cls: 'rss-folder-popover' });
             applyCssText(pop, `
                 position: fixed; z-index: 9999;
                 background: var(--background-primary);
@@ -915,7 +915,7 @@ function renderFeedCard(
             groups.forEach(g => addOpt(g.name, g.id));
 
             const rect = badge.getBoundingClientRect();
-            document.body.appendChild(pop);
+            activeDocument.body.appendChild(pop);
             const popH = pop.offsetHeight;
             const vh = window.innerHeight;
             let top = rect.bottom + 4;
@@ -928,10 +928,10 @@ function renderFeedCard(
             const close = (ev: MouseEvent) => {
                 if (!pop.contains(ev.target as Node) && ev.target !== badge) {
                     pop.remove();
-                    document.removeEventListener('click', close);
+                    activeDocument.removeEventListener('click', close);
                 }
             };
-            window.setTimeout(() => document.addEventListener('click', close), 0);
+            window.setTimeout(() => activeDocument.addEventListener('click', close), 0);
         });
 
         // (selectEls removed — handled by virtual scroll container width)

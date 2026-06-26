@@ -15,10 +15,6 @@ export interface FileMeta {
     deleted: boolean;
 }
 
-interface VaultWithConfig extends Vault {
-    getConfig?: (key: string) => unknown;
-}
-
 function isStringArray(value: unknown): value is string[] {
     return Array.isArray(value) && value.every(item => typeof item === 'string');
 }
@@ -118,34 +114,8 @@ export function isFileProtected(app: App, file: TFile, propertyName: string): bo
     return val !== true && String(val).toLowerCase() !== 'true';
 }
 
-function getObsidianTrashUsesSystem(app: App): boolean {
-    const getConfig = (app.vault as VaultWithConfig).getConfig?.bind(app.vault);
-    return getConfig?.('trashOption') !== 'local';
-}
-
 export async function discardVaultFile(app: App, file: TFile, settings?: PluginSettings): Promise<void> {
-    const behavior = settings?.deleteBehavior ?? 'obsidian';
-
-    if (behavior === 'direct') {
-        await app.vault.delete(file);
-        return;
-    }
-
-    const useSystem = behavior === 'system-trash'
-        ? true
-        : behavior === 'obsidian-trash'
-            ? false
-            : getObsidianTrashUsesSystem(app);
-
-    try {
-        await app.vault.trash(file, useSystem);
-    } catch (e) {
-        if (useSystem) {
-            await app.vault.trash(file, false);
-            return;
-        }
-        throw e;
-    }
+    await app.fileManager.trashFile(file);
 }
 
 // ─── Age-based cleanup ────────────────────────────────────────────────────────
