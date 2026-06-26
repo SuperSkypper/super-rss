@@ -66,3 +66,9 @@ Install **Super RSS** from **Settings → Community plugins** inside Obsidian.
 ## 📄 License
 
 MIT — see [LICENSE](LICENSE).
+
+## Note from the author
+
+I am not a programmer by trade. I built Super RSS because it was a tool I needed for my own workflow, and I decided to share it in case it helps other people too.
+
+This plugin was created over roughly four months with help from Claude and Codex.
