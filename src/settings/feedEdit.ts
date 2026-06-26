@@ -3,6 +3,7 @@ import RssPlugin, { FeedConfig, FeedGroup, resolveFeedPath } from '../main';
 import { renderVariableReference } from './settingsTemplate';
 import { openEditFoldersModal, promptFolderName } from './editFolders';
 import { discardVaultFile } from './feedDelete';
+import { setDynamicCss } from "../utils/css";
 
 interface VaultWithConfig {
     getConfig?: (key: string) => unknown;
@@ -68,14 +69,14 @@ export class FeedEditModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
 
-        this.modalEl.setCssProps({ 'width': '860px' });
-        this.modalEl.setCssProps({ 'max-width': '95vw' });
-        this.modalEl.setCssProps({ 'height': 'min(720px, 90vh)' });
-        this.modalEl.setCssProps({ 'max-height': 'none' });
-        this.modalEl.setCssProps({ 'overflow': 'hidden' });
-        this.modalEl.setCssProps({ 'display': 'flex' });
-        this.modalEl.setCssProps({ 'flex-direction': 'column' });
-        this.modalEl.setCssProps({ 'position': 'relative' });
+        setDynamicCss(this.modalEl, { 'width': '860px' });
+        setDynamicCss(this.modalEl, { 'max-width': '95vw' });
+        setDynamicCss(this.modalEl, { 'height': 'min(720px, 90vh)' });
+        setDynamicCss(this.modalEl, { 'max-height': 'none' });
+        setDynamicCss(this.modalEl, { 'overflow': 'hidden' });
+        setDynamicCss(this.modalEl, { 'display': 'flex' });
+        setDynamicCss(this.modalEl, { 'flex-direction': 'column' });
+        setDynamicCss(this.modalEl, { 'position': 'relative' });
 
         applyCssText(contentEl, 'display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; overflow: hidden; padding: 0;');
 
@@ -100,8 +101,8 @@ export class FeedEditModal extends Modal {
             const active   = 'background-color: var(--interactive-accent); color: var(--text-on-accent); border-color: var(--interactive-accent);';
             applyCssText(feedTabBtn, `${base}${activeTab === 'feed'   ? active : inactive}`);
             applyCssText(customTabBtn, `${base}${activeTab === 'custom' ? active : inactive}`);
-            feedContent.setCssProps({ 'display': activeTab === 'feed'   ? 'block' : 'none' });
-            customContent.setCssProps({ 'display': activeTab === 'custom' ? 'block' : 'none' });
+            setDynamicCss(feedContent, { 'display': activeTab === 'feed'   ? 'block' : 'none' });
+            setDynamicCss(customContent, { 'display': activeTab === 'custom' ? 'block' : 'none' });
         };
 
         feedTabBtn.onclick   = () => { if (activeTab !== 'feed')   { activeTab = 'feed';   updateView(); } };
@@ -130,8 +131,8 @@ export class FeedEditModal extends Modal {
             overflow: visible;
         `);
         if (!isTouchDevice()) {
-            el.onmouseenter = () => { el.setCssProps({ 'border-color': 'var(--interactive-accent)' }); };
-            el.onmouseleave = () => { el.setCssProps({ 'border-color': 'var(--background-modifier-border)' }); };
+            el.onmouseenter = () => { setDynamicCss(el, { 'border-color': 'var(--interactive-accent)' }); };
+            el.onmouseleave = () => { setDynamicCss(el, { 'border-color': 'var(--background-modifier-border)' }); };
         }
     }
 
@@ -145,16 +146,16 @@ export class FeedEditModal extends Modal {
             .addText(t => {
                 t.setValue(this.feed.name || '')
                  .onChange(v => { this.feed.name = v; });
-                t.inputEl.setCssProps({ 'font-size': inputFontSize() });
+                setDynamicCss(t.inputEl, { 'font-size': inputFontSize() });
             });
         this.applyCardToSetting(nameSetting);
 
         const urlSetting = new Setting(container).setName('Feed address');
         this.applyCardToSetting(urlSetting);
-        urlSetting.settingEl.setCssProps({ 'flex-direction': 'column' });
-        urlSetting.settingEl.setCssProps({ 'align-items': 'flex-start' });
-        urlSetting.controlEl.setCssProps({ 'width': '100%' });
-        urlSetting.controlEl.setCssProps({ 'margin-top': '10px' });
+        setDynamicCss(urlSetting.settingEl, { 'flex-direction': 'column' });
+        setDynamicCss(urlSetting.settingEl, { 'align-items': 'flex-start' });
+        setDynamicCss(urlSetting.controlEl, { 'width': '100%' });
+        setDynamicCss(urlSetting.controlEl, { 'margin-top': '10px' });
 
         const urlInput = urlSetting.controlEl.createEl('input', { type: 'text' });
         urlInput.value          = this.feed.url || '';
@@ -212,8 +213,8 @@ export class FeedEditModal extends Modal {
         const addFolderBtn = document.createElement('button');
         addFolderBtn.title = 'New folder';
         applyCssText(addFolderBtn, 'display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 5px; border: 1px solid var(--background-modifier-border); background: transparent; cursor: pointer; color: var(--text-muted); transition: all 0.12s ease; flex-shrink: 0; margin-right: 6px;');
-        addFolderBtn.addEventListener('mouseenter', () => { addFolderBtn.setCssProps({ 'border-color': 'var(--interactive-accent)' }); addFolderBtn.setCssProps({ 'color': 'var(--text-normal)' }); });
-        addFolderBtn.addEventListener('mouseleave', () => { addFolderBtn.setCssProps({ 'border-color': 'var(--background-modifier-border)' }); addFolderBtn.setCssProps({ 'color': 'var(--text-muted)' }); });
+        addFolderBtn.addEventListener('mouseenter', () => { setDynamicCss(addFolderBtn, { 'border-color': 'var(--interactive-accent)' }); setDynamicCss(addFolderBtn, { 'color': 'var(--text-normal)' }); });
+        addFolderBtn.addEventListener('mouseleave', () => { setDynamicCss(addFolderBtn, { 'border-color': 'var(--background-modifier-border)' }); setDynamicCss(addFolderBtn, { 'color': 'var(--text-muted)' }); });
         const addFolderIcon = addFolderBtn.createDiv();
         applyCssText(addFolderIcon, 'display: flex; align-items: center; width: 14px; height: 14px;');
         setIcon(addFolderIcon, 'folder-plus');
@@ -233,8 +234,8 @@ export class FeedEditModal extends Modal {
         const editFoldersBtn = groupSetting.controlEl.createEl('button');
         editFoldersBtn.title = 'Edit folders';
         applyCssText(editFoldersBtn, 'display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 5px; border: 1px solid var(--background-modifier-border); background: transparent; cursor: pointer; color: var(--text-muted); transition: all 0.12s ease; flex-shrink: 0; margin-left: 6px;');
-        editFoldersBtn.addEventListener('mouseenter', () => { editFoldersBtn.setCssProps({ 'border-color': 'var(--interactive-accent)' }); editFoldersBtn.setCssProps({ 'color': 'var(--text-normal)' }); });
-        editFoldersBtn.addEventListener('mouseleave', () => { editFoldersBtn.setCssProps({ 'border-color': 'var(--background-modifier-border)' }); editFoldersBtn.setCssProps({ 'color': 'var(--text-muted)' }); });
+        editFoldersBtn.addEventListener('mouseenter', () => { setDynamicCss(editFoldersBtn, { 'border-color': 'var(--interactive-accent)' }); setDynamicCss(editFoldersBtn, { 'color': 'var(--text-normal)' }); });
+        editFoldersBtn.addEventListener('mouseleave', () => { setDynamicCss(editFoldersBtn, { 'border-color': 'var(--background-modifier-border)' }); setDynamicCss(editFoldersBtn, { 'color': 'var(--text-muted)' }); });
         const editFoldersIcon = editFoldersBtn.createDiv();
         applyCssText(editFoldersIcon, 'display: flex; align-items: center; width: 14px; height: 14px;');
         setIcon(editFoldersIcon, 'folder-edit');
@@ -253,7 +254,7 @@ export class FeedEditModal extends Modal {
                 t.setPlaceholder(this.feed.name || 'Subfolder name')
                  .setValue(this.feed.folder || '')
                  .onChange(v => { this.feed.folder = v; });
-                t.inputEl.setCssProps({ 'font-size': inputFontSize() });
+                setDynamicCss(t.inputEl, { 'font-size': inputFontSize() });
 
                 if (nameInputRef) {
                     nameInputRef.addEventListener('input', () => {
@@ -275,7 +276,7 @@ export class FeedEditModal extends Modal {
                     .onChange(v => {
                         this.feed.updateIntervalValue = v.trim() === '' ? undefined : Number(v) || undefined;
                     });
-                text.inputEl.setCssProps({ 'font-size': inputFontSize() });
+                setDynamicCss(text.inputEl, { 'font-size': inputFontSize() });
                 text.inputEl.inputMode      = 'numeric';
             })
             .addDropdown(dropdown => dropdown
@@ -314,7 +315,7 @@ export class FeedEditModal extends Modal {
                         .onChange(v => {
                             this.feed.autoCleanupValue = v.trim() === '' ? undefined : Number(v) || undefined;
                         });
-                    text.inputEl.setCssProps({ 'font-size': inputFontSize() });
+                    setDynamicCss(text.inputEl, { 'font-size': inputFontSize() });
                     text.inputEl.inputMode      = 'numeric';
                 })
                 .addDropdown(dropdown => dropdown
@@ -327,8 +328,8 @@ export class FeedEditModal extends Modal {
                         this.feed.autoCleanupUnit = v as 'minutes' | 'hours' | 'days' | 'months';
                     }));
             this.applyCardToSetting(deleteAfterSetting);
-            deleteAfterSetting.settingEl.setCssProps({ 'margin-left': '20px' });
-            deleteAfterSetting.settingEl.setCssProps({ 'border-left': '3px solid var(--interactive-accent)' });
+            setDynamicCss(deleteAfterSetting.settingEl, { 'margin-left': '20px' });
+            setDynamicCss(deleteAfterSetting.settingEl, { 'border-left': '3px solid var(--interactive-accent)' });
 
             const globalDateLabel = this.plugin.settings.autoCleanupDateField === 'datepub'
                 ? 'Global ({{datepublished}})'
@@ -346,8 +347,8 @@ export class FeedEditModal extends Modal {
                         this.feed.autoCleanupDateField = v as 'global' | 'datepub' | 'datesaved';
                     }));
             this.applyCardToSetting(criterionSetting);
-            criterionSetting.settingEl.setCssProps({ 'margin-left': '20px' });
-            criterionSetting.settingEl.setCssProps({ 'border-left': '3px solid var(--interactive-accent)' });
+            setDynamicCss(criterionSetting.settingEl, { 'margin-left': '20px' });
+            setDynamicCss(criterionSetting.settingEl, { 'border-left': '3px solid var(--interactive-accent)' });
         }
 
         const youtubeHeader = container.createEl('h4', { text: 'YouTube' });
@@ -543,8 +544,8 @@ export class FeedEditModal extends Modal {
             transition: border-color 0.2s ease;
         `);
         if (!isTouchDevice()) {
-            wrapper.onmouseenter = () => { wrapper.setCssProps({ 'border-color': 'var(--interactive-accent)' }); };
-            wrapper.onmouseleave = () => { wrapper.setCssProps({ 'border-color': 'var(--background-modifier-border)' }); };
+            wrapper.onmouseenter = () => { setDynamicCss(wrapper, { 'border-color': 'var(--interactive-accent)' }); };
+            wrapper.onmouseleave = () => { setDynamicCss(wrapper, { 'border-color': 'var(--background-modifier-border)' }); };
         }
 
         const header = wrapper.createDiv();

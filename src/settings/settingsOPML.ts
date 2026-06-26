@@ -1,5 +1,6 @@
 import { App, Notice, Setting, Modal } from 'obsidian';
 import RssPlugin, { FeedConfig, FeedGroup } from '../main';
+import { setDynamicCss } from "../utils/css";
 
 function applyCssText(element: HTMLElement, cssText: string): void {
     const properties: Record<string, string> = {};
@@ -209,8 +210,8 @@ function showImportModal(
 
             this.rebuildCategoryMap();
 
-            this.modalEl.setCssProps({ 'width': 'min(720px, 95vw)' });
-            this.modalEl.setCssProps({ 'max-width': '95vw' });
+            setDynamicCss(this.modalEl, { 'width': 'min(720px, 95vw)' });
+            setDynamicCss(this.modalEl, { 'max-width': '95vw' });
 
             contentEl.createEl('h2', { text: 'Import feeds' });
 
@@ -349,7 +350,7 @@ export function renderOpmlTab(
     `);
     infoBox.createEl('div', { text: 'Use this file format to share feed lists between readers.' });
     const folderInfo = infoBox.createEl('div', { text: 'On export, folders become categories. On import, categories become folders.' });
-    folderInfo.setCssProps({ 'margin-top': '4px' });
+    setDynamicCss(folderInfo, { 'margin-top': '4px' });
 
     // ── Import ────────────────────────────────────────────────────────────────
     const importHeader = containerEl.createEl('h4', { text: 'Import' });
@@ -397,7 +398,7 @@ export function renderOpmlTab(
                 const onWindowFocus = () => {
                     window.removeEventListener('focus', onWindowFocus);
                     // Give onchange time to fire first, then clean up if still in DOM
-                    setTimeout(() => {
+                    window.setTimeout(() => {
                         if (document.body.contains(input)) document.body.removeChild(input);
                     }, 500);
                 };

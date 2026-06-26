@@ -1,6 +1,7 @@
 import { MetadataCache, Notice, setIcon } from 'obsidian';
 import RssPlugin, { FrontmatterMode, FrontmatterPropertyTemplate } from '../main';
 import { migrateLegacyFrontmatterTemplate } from './frontmatterMigration';
+import { setDynamicCss } from "../utils/css";
 
 // ─── Variable definitions ─────────────────────────────────────────────────────
 // Single source of truth — imported by editFeed.ts too.
@@ -95,7 +96,7 @@ const CARD_STYLE = `
 `;
 
 function accentBorder(el: HTMLElement, active: boolean): void {
-    el.setCssProps({ 'border-color': active
+    setDynamicCss(el, { 'border-color': active
         ? 'var(--interactive-accent)'
         : 'var(--background-modifier-border)' });
 }
@@ -198,7 +199,7 @@ export function renderVariableReference(containerEl: HTMLElement): void {
 
         SCOPE_ICONS.forEach(({ scope, icon }) => {
             const el = scopeIcons.createEl('span', { text: icon });
-            el.setCssProps({ 'opacity': v.scopes.includes(scope) ? '1' : '0.15' });
+            setDynamicCss(el, { 'opacity': v.scopes.includes(scope) ? '1' : '0.15' });
         });
 
         const tagEl = row.createEl('span', { text: v.tag });
@@ -232,10 +233,10 @@ function debounce<T extends (...args: unknown[]) => void | Promise<void>>(
     fn: T,
     ms: number
 ): (...args: Parameters<T>) => void {
-    let timer: ReturnType<typeof setTimeout>;
+    let timer: number;
     return ((...args: Parameters<T>) => {
-        clearTimeout(timer);
-        timer = setTimeout(() => {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => {
             void fn(...args);
         }, ms);
     }) as (...args: Parameters<T>) => void;
@@ -514,22 +515,22 @@ function renderPropertyRow(
     row.ondragstart = event => {
         event.dataTransfer?.setData('text/plain', String(index));
         if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
-        row.setCssProps({ 'opacity': '0.5' });
+        setDynamicCss(row, { 'opacity': '0.5' });
     };
     row.ondragend = () => {
-        row.setCssProps({ 'opacity': '1' });
-        row.setCssProps({ 'border-top-color': 'transparent' });
+        setDynamicCss(row, { 'opacity': '1' });
+        setDynamicCss(row, { 'border-top-color': 'transparent' });
     };
     row.ondragover = event => {
         event.preventDefault();
-        row.setCssProps({ 'border-top-color': 'var(--interactive-accent)' });
+        setDynamicCss(row, { 'border-top-color': 'var(--interactive-accent)' });
     };
     row.ondragleave = () => {
-        row.setCssProps({ 'border-top-color': 'transparent' });
+        setDynamicCss(row, { 'border-top-color': 'transparent' });
     };
     row.ondrop = event => {
         event.preventDefault();
-        row.setCssProps({ 'border-top-color': 'transparent' });
+        setDynamicCss(row, { 'border-top-color': 'transparent' });
         const from = Number(event.dataTransfer?.getData('text/plain'));
         if (!Number.isInteger(from) || from === index) return;
         const properties = ensureFrontmatterProperties(plugin);
@@ -611,7 +612,7 @@ function renderSourceFrontmatter(
         void saveTextarea();
     };
 
-    requestAnimationFrame(() => autoResize(textarea));
+    window.requestAnimationFrame(() => autoResize(textarea));
 }
 
 function renderTextAreaSetting(
@@ -649,5 +650,5 @@ function renderTextAreaSetting(
         void saveTextarea();
     };
 
-    requestAnimationFrame(() => autoResize(textarea));
+    window.requestAnimationFrame(() => autoResize(textarea));
 }

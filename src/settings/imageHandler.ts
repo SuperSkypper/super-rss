@@ -186,7 +186,7 @@ export async function extractImageUrl(itemValue: unknown, itemUrl: string, provi
         } else {
             try {
                 const timeoutPromise = new Promise<never>((_, reject) =>
-                    setTimeout(() => reject(new Error('timeout')), 5000)
+                    window.setTimeout(() => reject(new Error('timeout')), 5000)
                 );
                 const response = await Promise.race([
                     requestUrl({ url: itemUrl, method: 'GET' }),

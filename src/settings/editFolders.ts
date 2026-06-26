@@ -1,5 +1,6 @@
 import { App, Modal, Notice, setIcon, normalizePath } from 'obsidian';
 import RssPlugin, { FeedConfig, FeedGroup, resolveFeedPath, sanitizeFolderPath } from '../main';
+import { setDynamicCss } from "../utils/css";
 
 function applyCssText(element: HTMLElement, cssText: string): void {
     const properties: Record<string, string> = {};
@@ -199,13 +200,13 @@ export function openEditFoldersModal(
         private emptyMsg:  HTMLElement | null = null;
 
         onOpen() {
-            this.modalEl.setCssProps({ 'width': '500px' });
-            this.modalEl.setCssProps({ 'max-width': '95vw' });
-            this.modalEl.setCssProps({ 'height': 'min(600px, 85vh)' });
-            this.modalEl.setCssProps({ 'max-height': 'none' });
-            this.modalEl.setCssProps({ 'overflow': 'hidden' });
-            this.modalEl.setCssProps({ 'display': 'flex' });
-            this.modalEl.setCssProps({ 'flex-direction': 'column' });
+            setDynamicCss(this.modalEl, { 'width': '500px' });
+            setDynamicCss(this.modalEl, { 'max-width': '95vw' });
+            setDynamicCss(this.modalEl, { 'height': 'min(600px, 85vh)' });
+            setDynamicCss(this.modalEl, { 'max-height': 'none' });
+            setDynamicCss(this.modalEl, { 'overflow': 'hidden' });
+            setDynamicCss(this.modalEl, { 'display': 'flex' });
+            setDynamicCss(this.modalEl, { 'flex-direction': 'column' });
 
             const { contentEl } = this;
             applyCssText(contentEl, 'display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; overflow: hidden; padding: 0;');
@@ -233,8 +234,8 @@ export function openEditFoldersModal(
 
             const addBtn = header.createEl('button');
             applyCssText(addBtn, 'display: flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em; border: 1px solid var(--background-modifier-border); background: transparent; color: var(--text-muted); transition: all 0.15s ease;');
-            addBtn.addEventListener('mouseenter', () => { addBtn.setCssProps({ 'border-color': 'var(--interactive-accent)' }); addBtn.setCssProps({ 'color': 'var(--text-normal)' }); });
-            addBtn.addEventListener('mouseleave', () => { addBtn.setCssProps({ 'border-color': 'var(--background-modifier-border)' }); addBtn.setCssProps({ 'color': 'var(--text-muted)' }); });
+            addBtn.addEventListener('mouseenter', () => { setDynamicCss(addBtn, { 'border-color': 'var(--interactive-accent)' }); setDynamicCss(addBtn, { 'color': 'var(--text-normal)' }); });
+            addBtn.addEventListener('mouseleave', () => { setDynamicCss(addBtn, { 'border-color': 'var(--background-modifier-border)' }); setDynamicCss(addBtn, { 'color': 'var(--text-muted)' }); });
             const addIconEl = addBtn.createDiv();
             applyCssText(addIconEl, 'display: flex; align-items: center; width: 14px; height: 14px;');
             setIcon(addIconEl, 'folder-plus');
@@ -305,8 +306,8 @@ export function openEditFoldersModal(
                 border-radius: 8px; padding: 8px 12px;
                 transition: border-color 0.15s ease;
             `);
-            row.onmouseenter = () => { row.setCssProps({ 'border-color': 'var(--interactive-accent)' }); };
-            row.onmouseleave = () => { row.setCssProps({ 'border-color': 'var(--background-modifier-border)' }); };
+            row.onmouseenter = () => { setDynamicCss(row, { 'border-color': 'var(--interactive-accent)' }); };
+            row.onmouseleave = () => { setDynamicCss(row, { 'border-color': 'var(--background-modifier-border)' }); };
 
             const folderIconEl = row.createDiv();
             applyCssText(folderIconEl, 'display: flex; align-items: center; width: 16px; height: 16px; flex-shrink: 0; color: var(--text-muted);');
@@ -323,8 +324,8 @@ export function openEditFoldersModal(
             const renameBtn = row.createEl('button');
             renameBtn.title = 'Rename folder';
             applyCssText(renameBtn, 'display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 5px; border: none; background: transparent; cursor: pointer; color: var(--text-muted); transition: background 0.12s ease; flex-shrink: 0;');
-            renameBtn.addEventListener('mouseenter', () => { renameBtn.setCssProps({ 'background': 'var(--background-modifier-hover)' }); renameBtn.setCssProps({ 'color': 'var(--text-normal)' }); });
-            renameBtn.addEventListener('mouseleave', () => { renameBtn.setCssProps({ 'background': 'transparent' }); renameBtn.setCssProps({ 'color': 'var(--text-muted)' }); });
+            renameBtn.addEventListener('mouseenter', () => { setDynamicCss(renameBtn, { 'background': 'var(--background-modifier-hover)' }); setDynamicCss(renameBtn, { 'color': 'var(--text-normal)' }); });
+            renameBtn.addEventListener('mouseleave', () => { setDynamicCss(renameBtn, { 'background': 'transparent' }); setDynamicCss(renameBtn, { 'color': 'var(--text-muted)' }); });
             const renameIconEl = renameBtn.createDiv();
             applyCssText(renameIconEl, 'display: flex; align-items: center; width: 14px; height: 14px;');
             setIcon(renameIconEl, 'pencil');
@@ -345,8 +346,8 @@ export function openEditFoldersModal(
             const deleteBtn = row.createEl('button');
             deleteBtn.title = 'Delete folder';
             applyCssText(deleteBtn, 'display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 5px; border: none; background: transparent; cursor: pointer; color: var(--text-muted); transition: background 0.12s ease; flex-shrink: 0;');
-            deleteBtn.addEventListener('mouseenter', () => { deleteBtn.setCssProps({ 'background': 'var(--background-modifier-hover)' }); deleteBtn.setCssProps({ 'color': 'var(--color-red)' }); });
-            deleteBtn.addEventListener('mouseleave', () => { deleteBtn.setCssProps({ 'background': 'transparent' }); deleteBtn.setCssProps({ 'color': 'var(--text-muted)' }); });
+            deleteBtn.addEventListener('mouseenter', () => { setDynamicCss(deleteBtn, { 'background': 'var(--background-modifier-hover)' }); setDynamicCss(deleteBtn, { 'color': 'var(--color-red)' }); });
+            deleteBtn.addEventListener('mouseleave', () => { setDynamicCss(deleteBtn, { 'background': 'transparent' }); setDynamicCss(deleteBtn, { 'color': 'var(--text-muted)' }); });
             const deleteIconEl = deleteBtn.createDiv();
             applyCssText(deleteIconEl, 'display: flex; align-items: center; width: 14px; height: 14px;');
             setIcon(deleteIconEl, 'trash');
@@ -472,8 +473,8 @@ export function renderFolderDropdown(
         setIcon(chevron, 'chevron-down');
 
         const isFiltered = current !== null;
-        trigger.setCssProps({ 'border-color': isFiltered ? 'var(--interactive-accent)' : 'var(--background-modifier-border)' });
-        trigger.setCssProps({ 'color': isFiltered ? 'var(--text-normal)'        : 'var(--text-muted)' });
+        setDynamicCss(trigger, { 'border-color': isFiltered ? 'var(--interactive-accent)' : 'var(--background-modifier-border)' });
+        setDynamicCss(trigger, { 'color': isFiltered ? 'var(--text-normal)'        : 'var(--text-muted)' });
     };
 
     applyCssText(trigger, `
@@ -532,10 +533,10 @@ export function renderFolderDropdown(
             applyCssText(iconEl, 'display: flex; align-items: center; width: 14px; height: 14px; flex-shrink: 0;');
             setIcon(iconEl, icon);
             item.createSpan({ text: label });
-            item.onmouseenter = () => { item.setCssProps({ 'background': 'var(--background-modifier-hover)' }); item.setCssProps({ 'color': 'var(--text-normal)' }); };
+            item.onmouseenter = () => { setDynamicCss(item, { 'background': 'var(--background-modifier-hover)' }); setDynamicCss(item, { 'color': 'var(--text-normal)' }); };
             item.onmouseleave = () => {
-                item.setCssProps({ 'background': isCurrent ? 'var(--background-modifier-hover)' : 'transparent' });
-                item.setCssProps({ 'color': isCurrent ? 'var(--text-normal)'               : 'var(--text-muted)' });
+                setDynamicCss(item, { 'background': isCurrent ? 'var(--background-modifier-hover)' : 'transparent' });
+                setDynamicCss(item, { 'color': isCurrent ? 'var(--text-normal)'               : 'var(--text-muted)' });
             };
             item.addEventListener('pointerdown', (ev) => {
                 ev.preventDefault();
@@ -550,7 +551,7 @@ export function renderFolderDropdown(
         applyCssText(dividerEl, 'border: none; border-top: 1px solid var(--background-modifier-border); margin: 4px 0;');
         for (const group of groups) addOption(group.name, group.id, 'folder');
 
-        popover.setCssProps({ 'visibility': 'hidden' });
+        setDynamicCss(popover, { 'visibility': 'hidden' });
         document.body.appendChild(popover);
 
         const rect   = trigger.getBoundingClientRect();
@@ -565,11 +566,11 @@ export function renderFolderDropdown(
         let top = rect.bottom + 6;
         if (top + popH + margin > vh) top = Math.max(margin, rect.top - popH - 6);
 
-        popover.setCssProps({ 'top': `${top}px` });
-        popover.setCssProps({ 'left': `${left}px` });
-        popover.setCssProps({ 'visibility': 'visible' });
+        setDynamicCss(popover, { 'top': `${top}px` });
+        setDynamicCss(popover, { 'left': `${left}px` });
+        setDynamicCss(popover, { 'visibility': 'visible' });
 
-        setTimeout(() => {
+        window.setTimeout(() => {
             document.addEventListener('click',     onOutsideClick);
             document.addEventListener('touchstart', onOutsideTouch, { passive: true });
         }, 0);

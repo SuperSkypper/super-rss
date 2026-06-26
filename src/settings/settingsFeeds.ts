@@ -1,5 +1,6 @@
 import { App, Setting, Notice, setIcon } from 'obsidian';
 import RssPlugin, { FeedConfig, FeedGroup } from '../main';
+import { setDynamicCss } from "../utils/css";
 import {
     sortGroups,
     openMoveToFolderModal,
@@ -36,10 +37,10 @@ const COLLATOR = new Intl.Collator(undefined, { sensitivity: 'base' });
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function debounce<T extends (...args: unknown[]) => void>(fn: T, ms: number): T {
-    let timer: ReturnType<typeof setTimeout>;
+    let timer: number;
     return ((...args: unknown[]) => {
-        clearTimeout(timer);
-        timer = setTimeout(() => fn(...args), ms);
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => fn(...args), ms);
     }) as T;
 }
 
@@ -129,7 +130,7 @@ function createVirtualList(
     const updateLayout = () => {
         cardHeight = getFeedCardHeight();
         const totalHeight = items.length * cardHeight;
-        innerEl.setCssProps({ height: totalHeight + 'px' });
+        setDynamicCss(innerEl, { height: totalHeight + 'px' });
 
         const scrollTop    = scrollEl.scrollTop;
         const viewHeight   = scrollEl.clientHeight || 520;
@@ -161,9 +162,9 @@ function createVirtualList(
         renderedStart = newStart;
         renderedEnd   = newEnd;
 
-        spacerTop.setCssProps({ height: (newStart * cardHeight) + 'px' });
-        spacerBot.setCssProps({ top: (newEnd * cardHeight) + 'px' });
-        spacerBot.setCssProps({ height: Math.max(0, (items.length - newEnd) * cardHeight) + 'px' });
+        setDynamicCss(spacerTop, { height: (newStart * cardHeight) + 'px' });
+        setDynamicCss(spacerBot, { top: (newEnd * cardHeight) + 'px' });
+        setDynamicCss(spacerBot, { height: Math.max(0, (items.length - newEnd) * cardHeight) + 'px' });
     };
 
     // ── Throttled scroll handler ──────────────────────────────────────────────
@@ -173,7 +174,7 @@ function createVirtualList(
     const onScroll = () => {
         if (rafPending) return;
         rafPending = true;
-        requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
             rafPending = false;
             updateLayout();
         });
@@ -342,7 +343,7 @@ export function renderMyFeedsTab(
     // ── Controls card renderer ────────────────────────────────────────────────
     const renderControlsCard = () => {
         controlsCard.empty();
-        controlsCard.setCssProps({ 'border-color': '' });
+        setDynamicCss(controlsCard, { 'border-color': '' });
 
         // ── Trash tab ─────────────────────────────────────────────────────────
         if (activeFilter === 'trash') {
@@ -370,15 +371,15 @@ export function renderMyFeedsTab(
             applyCssText(sep, SEPARATOR_CSS);
 
             if (hasSelection) {
-                controlsCard.setCssProps({ 'border-color': 'var(--interactive-accent)' });
+                setDynamicCss(controlsCard, { 'border-color': 'var(--interactive-accent)' });
 
                 const countEl = controlsCard.createSpan({ text: `${hasSelection ? selectedFeeds.size : 0} selected` });
                 applyCssText(countEl, 'font-size: 0.82em; font-weight: 600; color: var(--interactive-accent); padding: 0 4px;');
 
                 const deselectBtn = controlsCard.createEl('button');
                 applyCssText(deselectBtn, 'display: flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.83em; background: transparent; color: var(--text-muted); transition: background 0.12s ease;');
-                deselectBtn.addEventListener('mouseenter', () => { deselectBtn.setCssProps({ background: 'var(--background-modifier-hover)' }); });
-                deselectBtn.addEventListener('mouseleave', () => { deselectBtn.setCssProps({ background: 'transparent' }); });
+                deselectBtn.addEventListener('mouseenter', () => { setDynamicCss(deselectBtn, { background: 'var(--background-modifier-hover)' }); });
+                deselectBtn.addEventListener('mouseleave', () => { setDynamicCss(deselectBtn, { background: 'transparent' }); });
                 const xIcon = deselectBtn.createDiv();
                 applyCssText(xIcon, 'display: flex; align-items: center; width: 14px; height: 14px; flex-shrink: 0;');
                 setIcon(xIcon, 'x');
@@ -391,13 +392,13 @@ export function renderMyFeedsTab(
                 const restoreBtn = controlsCard.createEl('button');
                 applyCssText(restoreBtn, 'display: flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.83em; background: transparent; color: var(--text-normal); transition: background 0.12s ease;');
                 restoreBtn.title = 'Restore selected';
-                restoreBtn.addEventListener('mouseenter', () => { restoreBtn.setCssProps({ background: 'var(--background-modifier-hover)' }); });
-                restoreBtn.addEventListener('mouseleave', () => { restoreBtn.setCssProps({ background: 'transparent' }); });
+                restoreBtn.addEventListener('mouseenter', () => { setDynamicCss(restoreBtn, { background: 'var(--background-modifier-hover)' }); });
+                restoreBtn.addEventListener('mouseleave', () => { setDynamicCss(restoreBtn, { background: 'transparent' }); });
                 const restoreIcon = restoreBtn.createDiv();
                 applyCssText(restoreIcon, 'display: flex; align-items: center; width: 15px; height: 15px; flex-shrink: 0;');
                 setIcon(restoreIcon, 'undo');
                 const restoreLabel = restoreBtn.createSpan({ text: 'Restore' });
-                const updateRestoreLabel = () => { restoreLabel.setCssProps({ display: controlsCard.offsetWidth < 480 ? 'none' : '' }); };
+                const updateRestoreLabel = () => { setDynamicCss(restoreLabel, { display: controlsCard.offsetWidth < 480 ? 'none' : '' }); };
                 updateRestoreLabel();
                 const restoreRo = new ResizeObserver(updateRestoreLabel);
                 restoreRo.observe(controlsCard);
@@ -424,14 +425,14 @@ export function renderMyFeedsTab(
                 const delBtn = controlsCard.createEl('button');
                 applyCssText(delBtn, 'display: flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.83em; background: transparent; color: var(--color-red); transition: background 0.12s ease;');
                 delBtn.title = 'Delete permanently';
-                delBtn.addEventListener('mouseenter', () => { delBtn.setCssProps({ background: 'var(--background-modifier-hover)' }); });
-                delBtn.addEventListener('mouseleave', () => { delBtn.setCssProps({ background: 'transparent' }); });
+                delBtn.addEventListener('mouseenter', () => { setDynamicCss(delBtn, { background: 'var(--background-modifier-hover)' }); });
+                delBtn.addEventListener('mouseleave', () => { setDynamicCss(delBtn, { background: 'transparent' }); });
                 const delIcon = delBtn.createDiv();
                 applyCssText(delIcon, 'display: flex; align-items: center; width: 15px; height: 15px; flex-shrink: 0;');
                 setIcon(delIcon, 'trash');
                 const delLabel = delBtn.createSpan({ text: 'Delete permanently' });
 
-                const updateDelLabel = () => { delLabel.setCssProps({ display: controlsCard.offsetWidth < 480 ? 'none' : '' }); };
+                const updateDelLabel = () => { setDynamicCss(delLabel, { display: controlsCard.offsetWidth < 480 ? 'none' : '' }); };
                 updateDelLabel();
                 const delRo = new ResizeObserver(updateDelLabel);
                 delRo.observe(controlsCard);
@@ -455,7 +456,7 @@ export function renderMyFeedsTab(
                 });
 
             } else {
-                controlsCard.setCssProps({ 'border-color': '' });
+                setDynamicCss(controlsCard, { 'border-color': '' });
                 const label = controlsCard.createSpan({ text: 'Select all' });
                 applyCssText(label, 'font-size: 0.82em; color: var(--text-muted);');
             }
@@ -494,7 +495,7 @@ export function renderMyFeedsTab(
             const tgWrap = controlsCard.createDiv();
             applyCssText(tgWrap, CONTROL_WRAPPER_CSS);
             const toggleEl = tgWrap.createEl('div', { cls: 'checkbox-container' });
-            toggleEl.setCssProps({ margin: '0' });
+            setDynamicCss(toggleEl, { margin: '0' });
             const selList = plugin.settings.feeds.filter((f: FeedConfig) => selectedFeeds.has(f.url));
             const allOn   = selList.every((f: FeedConfig) => f.enabled);
             if (allOn) toggleEl.classList.add('is-enabled');
@@ -519,15 +520,15 @@ export function renderMyFeedsTab(
         applyCssText(sep, SEPARATOR_CSS);
 
         if (hasSelection) {
-            controlsCard.setCssProps({ 'border-color': 'var(--interactive-accent)' });
+            setDynamicCss(controlsCard, { 'border-color': 'var(--interactive-accent)' });
 
             const countEl = controlsCard.createSpan({ text: `${selectedFeeds.size} selected` });
             applyCssText(countEl, 'font-size: 0.82em; font-weight: 600; color: var(--interactive-accent); padding: 0 4px;');
 
             const deselectBtn = controlsCard.createEl('button');
             applyCssText(deselectBtn, 'display: flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.83em; background: transparent; color: var(--text-muted); transition: background 0.12s ease;');
-            deselectBtn.addEventListener('mouseenter', () => { deselectBtn.setCssProps({ background: 'var(--background-modifier-hover)' }); });
-            deselectBtn.addEventListener('mouseleave', () => { deselectBtn.setCssProps({ background: 'transparent' }); });
+            deselectBtn.addEventListener('mouseenter', () => { setDynamicCss(deselectBtn, { background: 'var(--background-modifier-hover)' }); });
+            deselectBtn.addEventListener('mouseleave', () => { setDynamicCss(deselectBtn, { background: 'transparent' }); });
             const xIcon = deselectBtn.createDiv();
             applyCssText(xIcon, 'display: flex; align-items: center; width: 14px; height: 14px; flex-shrink: 0;');
             setIcon(xIcon, 'x');
@@ -541,14 +542,14 @@ export function renderMyFeedsTab(
                 const btn = controlsCard.createEl('button');
                 applyCssText(btn, 'display: flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.83em; background: transparent; color: var(--text-normal); transition: background 0.12s ease; margin-left: 4px;');
                 btn.title = label;
-                btn.addEventListener('mouseenter', () => { btn.setCssProps({ background: 'var(--background-modifier-hover)' }); });
-                btn.addEventListener('mouseleave', () => { btn.setCssProps({ background: 'transparent' }); });
+                btn.addEventListener('mouseenter', () => { setDynamicCss(btn, { background: 'var(--background-modifier-hover)' }); });
+                btn.addEventListener('mouseleave', () => { setDynamicCss(btn, { background: 'transparent' }); });
                 const iconEl = btn.createDiv();
                 applyCssText(iconEl, 'display: flex; align-items: center; width: 15px; height: 15px; flex-shrink: 0;');
                 setIcon(iconEl, icon);
                 const labelEl = btn.createSpan({ text: label });
 
-                const updateLabel = () => { labelEl.setCssProps({ display: controlsCard.offsetWidth < 480 ? 'none' : '' }); };
+                const updateLabel = () => { setDynamicCss(labelEl, { display: controlsCard.offsetWidth < 480 ? 'none' : '' }); };
                 updateLabel();
 
                 const ro = new ResizeObserver(updateLabel);
@@ -647,9 +648,9 @@ export function renderMyFeedsTab(
     const searchInput = searchWrap.createEl('input', { type: 'text' });
     searchInput.placeholder = 'Search feeds…';
     applyCssText(searchInput, 'border: none; background: transparent; outline: none; font-size: 0.82em; color: var(--text-normal); width: 100%; line-height: 1; height: 18px;');
-    searchWrap.addEventListener('focusin', () => { searchWrap.setCssProps({ 'border-color': 'var(--interactive-accent)' }); });
+    searchWrap.addEventListener('focusin', () => { setDynamicCss(searchWrap, { 'border-color': 'var(--interactive-accent)' }); });
     searchWrap.addEventListener('focusout', () => {
-        searchWrap.setCssProps({ 'border-color': searchQuery ? 'var(--interactive-accent)' : 'var(--background-modifier-border)' });
+        setDynamicCss(searchWrap, { 'border-color': searchQuery ? 'var(--interactive-accent)' : 'var(--background-modifier-border)' });
     });
     const debouncedSearch = debounce(() => {
         selectedFeeds.clear();
@@ -737,8 +738,8 @@ function renderFeedCard(
     `);
     cardEl.classList.add('rss-card-setting');
     cardEl.classList.add('rss-feed-card');
-    cardEl.onmouseenter = () => { cardEl.setCssProps({ 'border-color': 'var(--interactive-accent)' }); };
-    cardEl.onmouseleave = () => { cardEl.setCssProps({ 'border-color': 'var(--background-modifier-border)' }); };
+    cardEl.onmouseenter = () => { setDynamicCss(cardEl, { 'border-color': 'var(--interactive-accent)' }); };
+    cardEl.onmouseleave = () => { setDynamicCss(cardEl, { 'border-color': 'var(--background-modifier-border)' }); };
 
     cardEl.dataset.feedUrl     = feed.url;
     cardEl.dataset.feedStatus  = status;
@@ -761,7 +762,7 @@ function renderFeedCard(
     toggleWrapper.classList.add('rss-feed-card-toggle');
     applyCssText(toggleWrapper, CONTROL_WRAPPER_CSS);
     const toggleEl = toggleWrapper.createEl('div', { cls: 'checkbox-container' });
-    toggleEl.setCssProps({ margin: '0' });
+    setDynamicCss(toggleEl, { margin: '0' });
     if (feed.enabled) toggleEl.classList.add('is-enabled');
     toggleEl.addEventListener('click', () => {
         void (async () => {
@@ -804,8 +805,8 @@ function renderFeedCard(
             width: 24px; height: 24px; flex-shrink: 0;
             opacity: 0.85; transition: opacity 0.12s ease;
         `);
-        livesBadge.onmouseenter = () => { livesBadge.setCssProps({ opacity: '1' }); };
-        livesBadge.onmouseleave = () => { livesBadge.setCssProps({ opacity: '0.85' }); };
+        livesBadge.onmouseenter = () => { setDynamicCss(livesBadge, { opacity: '1' }); };
+        livesBadge.onmouseleave = () => { setDynamicCss(livesBadge, { opacity: '0.85' }); };
 
         const radioEl = livesBadge.createDiv();
         applyCssText(radioEl, 'display: flex; align-items: center; width: 18px; height: 18px; color: var(--text-muted);');
@@ -840,8 +841,8 @@ function renderFeedCard(
                 width: 24px; height: 24px; flex-shrink: 0;
                 opacity: 0.85; transition: opacity 0.12s ease;
             `);
-            skipBadge.onmouseenter = () => { skipBadge.setCssProps({ opacity: '1' }); };
-            skipBadge.onmouseleave = () => { skipBadge.setCssProps({ opacity: '0.85' }); };
+            skipBadge.onmouseenter = () => { setDynamicCss(skipBadge, { opacity: '1' }); };
+            skipBadge.onmouseleave = () => { setDynamicCss(skipBadge, { opacity: '0.85' }); };
 
             const phoneEl = skipBadge.createDiv();
             applyCssText(phoneEl, 'display: flex; align-items: center; width: 18px; height: 18px; color: var(--text-muted);');
@@ -873,8 +874,8 @@ function renderFeedCard(
             transition: border-color 0.12s ease;
         `);
         badge.title = 'Change folder';
-        badge.onmouseenter = () => { badge.setCssProps({ 'border-color': 'var(--interactive-accent)' }); };
-        badge.onmouseleave = () => { badge.setCssProps({ 'border-color': 'var(--background-modifier-border)' }); };
+        badge.onmouseenter = () => { setDynamicCss(badge, { 'border-color': 'var(--interactive-accent)' }); };
+        badge.onmouseleave = () => { setDynamicCss(badge, { 'border-color': 'var(--background-modifier-border)' }); };
 
         badge.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -894,8 +895,8 @@ function renderFeedCard(
                 const item = pop.createDiv({ text: label });
                 const isCur = val === (feed.groupId ?? '');
                 applyCssText(item, `padding: 6px 10px; border-radius: 5px; cursor: pointer; font-size: 0.85em; color: ${isCur ? 'var(--text-normal)' : 'var(--text-muted)'}; font-weight: ${isCur ? '500' : '400'};`);
-                item.onmouseenter = () => { item.setCssProps({ background: 'var(--background-modifier-hover)' }); item.setCssProps({ color: 'var(--text-normal)' }); };
-                item.onmouseleave = () => { item.setCssProps({ background: 'transparent' }); };
+                item.onmouseenter = () => { setDynamicCss(item, { background: 'var(--background-modifier-hover)' }); setDynamicCss(item, { color: 'var(--text-normal)' }); };
+                item.onmouseleave = () => { setDynamicCss(item, { background: 'transparent' }); };
                 item.addEventListener('pointerdown', (ev) => {
                     void (async () => {
                     ev.preventDefault();
@@ -919,7 +920,7 @@ function renderFeedCard(
             const vh = window.innerHeight;
             let top = rect.bottom + 4;
             if (top + popH > vh - 8) top = rect.top - popH - 4;
-            pop.setCssProps({
+            setDynamicCss(pop, {
                 top: `${top}px`,
                 left: `${rect.left}px`,
             });
@@ -930,7 +931,7 @@ function renderFeedCard(
                     document.removeEventListener('click', close);
                 }
             };
-            setTimeout(() => document.addEventListener('click', close), 0);
+            window.setTimeout(() => document.addEventListener('click', close), 0);
         });
 
         // (selectEls removed — handled by virtual scroll container width)
@@ -946,8 +947,8 @@ function renderFeedCard(
         const btn = controlEl.createEl('button');
         btn.title = tooltip;
         applyCssText(btn, `display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 6px; border: none; background: transparent; cursor: pointer; color: ${color ?? 'var(--text-normal)'}; transition: background 0.12s ease;`);
-        btn.addEventListener('mouseenter', () => { btn.setCssProps({ background: 'var(--background-modifier-hover)' }); });
-        btn.addEventListener('mouseleave', () => { btn.setCssProps({ background: 'transparent' }); });
+        btn.addEventListener('mouseenter', () => { setDynamicCss(btn, { background: 'var(--background-modifier-hover)' }); });
+        btn.addEventListener('mouseleave', () => { setDynamicCss(btn, { background: 'transparent' }); });
         const iconEl = btn.createDiv();
         applyCssText(iconEl, 'display: flex; align-items: center; width: 18px; height: 18px;');
         setIcon(iconEl, icon);
@@ -966,8 +967,8 @@ function renderFeedCard(
 
             // Spin the icon while updating
             const iconEl = updateBtn.querySelector('div') as HTMLElement;
-            iconEl.setCssProps({ transition: 'transform 0.6s linear' });
-            iconEl.setCssProps({ transform: 'rotate(360deg)' });
+            setDynamicCss(iconEl, { transition: 'transform 0.6s linear' });
+            setDynamicCss(iconEl, { transform: 'rotate(360deg)' });
             updateBtn.disabled = true;
 
             try {
@@ -977,8 +978,8 @@ function renderFeedCard(
                 console.error(`RSS: Manual update failed for "${feed.name}":`, e);
                 new Notice(`Update failed for "${feed.name}".`);
             } finally {
-                iconEl.setCssProps({ transition: '' });
-                iconEl.setCssProps({ transform: '' });
+                setDynamicCss(iconEl, { transition: '' });
+                setDynamicCss(iconEl, { transform: '' });
                 updateBtn.disabled = false;
             }
             })();

@@ -1,4 +1,5 @@
 import { Plugin, Notice, normalizePath } from 'obsidian';
+import { setDynamicCss } from "./utils/css";
 
 
 // ─── Types & defaults (extracted to keep main.ts lean) ───────────────────────
@@ -67,7 +68,7 @@ export default class RssPlugin extends Plugin {
         await this.loadSettings();
 
         this.statusBarItem = this.addStatusBarItem();
-        this.statusBarItem.setCssProps({ 'display': 'none' });
+        setDynamicCss(this.statusBarItem, { 'display': 'none' });
 
         this.addCommand({
             id: 'update-rss-feeds',
@@ -117,7 +118,7 @@ export default class RssPlugin extends Plugin {
 
     setStatusBar(current: number, total: number, feedName: string): void {
         if (this.settings.showStatusBar && this.statusBarItem) {
-            this.statusBarItem.setCssProps({ 'display': '' });
+            setDynamicCss(this.statusBarItem, { 'display': '' });
             this.statusBarItem.setText(`Saving RSS: ${current}/${total}`);
             this.statusBarItem.title = `Updating feeds ${current}/${total}: ${feedName}`;
         }
@@ -125,13 +126,13 @@ export default class RssPlugin extends Plugin {
 
     clearStatusBar(): void {
         if (this.statusBarItem) {
-            this.statusBarItem.setCssProps({ 'display': 'none' });
+            setDynamicCss(this.statusBarItem, { 'display': 'none' });
         }
     }
 
     setStatusBarText(text: string, tooltip?: string): void {
         if (this.settings.showStatusBar && this.statusBarItem) {
-            this.statusBarItem.setCssProps({ 'display': '' });
+            setDynamicCss(this.statusBarItem, { 'display': '' });
             this.statusBarItem.setText(text);
             this.statusBarItem.title = tooltip ?? text;
         }
@@ -410,7 +411,7 @@ export default class RssPlugin extends Plugin {
             return appWithLocalStorage.loadLocalStorage(key) as T | null;
         }
 
-        const storage = globalThis.localStorage;
+        const storage = window.localStorage;
         const raw = storage?.getItem(this.getLegacyLocalStorageKey(key));
         return raw ? JSON.parse(raw) as T : null;
     }
@@ -422,7 +423,7 @@ export default class RssPlugin extends Plugin {
             return;
         }
 
-        globalThis.localStorage?.setItem(this.getLegacyLocalStorageKey(key), JSON.stringify(data));
+        window.localStorage?.setItem(this.getLegacyLocalStorageKey(key), JSON.stringify(data));
     }
 
     private getLegacyLocalStorageKey(key: string): string {

@@ -1,6 +1,7 @@
 import { Setting, Notice } from 'obsidian';
 import RssPlugin from '../main';
 import { purgeEntriesByStatus, ArticleStatus } from './feedDatabase';
+import { setDynamicCss } from "../utils/css";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,10 +47,10 @@ function debounce<T extends (...args: unknown[]) => void | Promise<void>>(
     fn: T,
     ms: number
 ): (...args: Parameters<T>) => void {
-    let timer: ReturnType<typeof setTimeout>;
+    let timer: number;
     return ((...args: unknown[]) => {
-        clearTimeout(timer);
-        timer = setTimeout(() => {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => {
             void fn(...args);
         }, ms);
     }) as (...args: Parameters<T>) => void;
@@ -62,7 +63,7 @@ function saveSettings(plugin: RssPlugin): void {
 }
 
 function applyIndent(settingEl: HTMLElement, level: 1 | 2 = 1): void {
-    settingEl.setCssProps({
+    setDynamicCss(settingEl, {
         'margin-left': level === 2 ? '40px' : '20px',
         'border-left': '3px solid var(--interactive-accent)',
     });
@@ -86,7 +87,7 @@ export function renderGeneralTab(
     const rerender = () => {
         if (rerenderScheduled) return;
         rerenderScheduled = true;
-        requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
             rerenderScheduled = false;
             renderGeneralTab(containerEl, plugin, applyCardStyle);
         });
@@ -119,7 +120,7 @@ export function renderGeneralTab(
                     plugin.settings.folderPath = sanitizeFolderPath(value, 'RSS');
                     saveSettings(plugin);
                 }, 500));
-            text.inputEl.setCssProps({ 'font-size': '16px' });
+            setDynamicCss(text.inputEl, { 'font-size': '16px' });
             text.inputEl.autocapitalize = 'off';
             text.inputEl.autocomplete = 'off';
             text.inputEl.spellcheck = false;
@@ -152,7 +153,7 @@ export function renderGeneralTab(
                         plugin.settings.updateIntervalValue = parsePositiveInt(v, 30);
                         saveSettings(plugin);
                     }, 500));
-                text.inputEl.setCssProps({ 'font-size': '16px' });
+                setDynamicCss(text.inputEl, { 'font-size': '16px' });
                 text.inputEl.inputMode = 'numeric';
                 text.inputEl.autocapitalize = 'off';
                 text.inputEl.autocomplete = 'off';
@@ -199,7 +200,7 @@ export function renderGeneralTab(
                         plugin.settings.autoCleanupValue = parsePositiveInt(v, 30);
                         saveSettings(plugin);
                     }, 500));
-                text.inputEl.setCssProps({ 'font-size': '16px' });
+                setDynamicCss(text.inputEl, { 'font-size': '16px' });
                 text.inputEl.inputMode = 'numeric';
                 text.inputEl.autocapitalize = 'off';
                 text.inputEl.autocomplete = 'off';
@@ -255,7 +256,7 @@ export function renderGeneralTab(
                             plugin.settings.autoCleanupCheckPropertyName = v.trim();
                             saveSettings(plugin);
                         }, 500));
-                    text.inputEl.setCssProps({ 'font-size': '16px' });
+                    setDynamicCss(text.inputEl, { 'font-size': '16px' });
                     text.inputEl.autocapitalize = 'off';
                     text.inputEl.autocomplete = 'off';
                     text.inputEl.spellcheck = false;
@@ -343,12 +344,12 @@ export function renderGeneralTab(
                         try {
                             await navigator.clipboard.writeText(formula);
                             btn.setButtonText('Copied!');
-                            setTimeout(() => {
+                            window.setTimeout(() => {
                                 btn.setButtonText('Copy formula');
                             }, 2000);
                         } catch {
                             btn.setButtonText('Failed');
-                            setTimeout(() => {
+                            window.setTimeout(() => {
                                 btn.setButtonText('Copy formula');
                             }, 2000);
                         }
@@ -415,7 +416,7 @@ export function renderGeneralTab(
                 .setDesc('See Obsidian settings → Files and links → Default location for new attachments.'); // eslint-disable-line obsidianmd/ui/sentence-case -- Obsidian navigation labels
             applyCardStyle(infoSetting);
             applyIndent(infoSetting.settingEl, 2);
-            infoSetting.settingEl.setCssProps({ opacity: '0.7' });
+            setDynamicCss(infoSetting.settingEl, { opacity: '0.7' });
         }
 
         if (plugin.settings.imageLocation === 'subfolder') {
@@ -429,7 +430,7 @@ export function renderGeneralTab(
                             plugin.settings.imagesFolder = sanitizeFolderPath(v, 'attachments');
                             saveSettings(plugin);
                         }, 500));
-                    text.inputEl.setCssProps({ 'font-size': '16px' });
+                    setDynamicCss(text.inputEl, { 'font-size': '16px' });
                     text.inputEl.autocapitalize = 'off';
                     text.inputEl.autocomplete = 'off';
                     text.inputEl.spellcheck = false;
@@ -461,7 +462,7 @@ export function renderGeneralTab(
                             plugin.settings.imagesFolder = sanitizeFolderPath(v, '');
                             saveSettings(plugin);
                         }, 500));
-                    text.inputEl.setCssProps({ 'font-size': '16px' });
+                    setDynamicCss(text.inputEl, { 'font-size': '16px' });
                     text.inputEl.autocapitalize = 'off';
                     text.inputEl.autocomplete = 'off';
                     text.inputEl.spellcheck = false;
@@ -583,7 +584,7 @@ export function renderGeneralTab(
                         plugin.settings.tagLiveKeywords = v.trim();
                         saveSettings(plugin);
                     }, 500));
-                t.inputEl.setCssProps({ 'font-size': '16px' });
+                setDynamicCss(t.inputEl, { 'font-size': '16px' });
                 t.inputEl.autocapitalize = 'off';
                 t.inputEl.autocomplete = 'off';
                 t.inputEl.spellcheck = false;
@@ -628,7 +629,7 @@ export function renderGeneralTab(
 
         for (const { status, label } of purgeConfigs) {
             let confirming = false;
-            let resetTimer: ReturnType<typeof setTimeout> | null = null;
+            let resetTimer: number | null = null;
 
             const purgeSetting = new Setting(contentEl)
                 .setName(`Purge ${label} entries`)
@@ -640,15 +641,15 @@ export function renderGeneralTab(
                             if (!confirming) {
                                 confirming = true;
                                 btn.setButtonText('Click again to confirm');
-                                btn.buttonEl.setCssProps({ background: 'var(--color-red)' });
+                                setDynamicCss(btn.buttonEl, { background: 'var(--color-red)' });
 
-                                resetTimer = setTimeout(() => {
+                                resetTimer = window.setTimeout(() => {
                                     confirming = false;
                                     btn.setButtonText(`Purge ${label} entries`);
-                                    btn.buttonEl.setCssProps({ background: '' });
+                                    setDynamicCss(btn.buttonEl, { background: '' });
                                 }, 4000);
                             } else {
-                                if (resetTimer) clearTimeout(resetTimer);
+                                if (resetTimer) window.clearTimeout(resetTimer);
                                 confirming = false;
                                 btn.setButtonText('Purging...');
                                 btn.setDisabled(true);
@@ -665,7 +666,7 @@ export function renderGeneralTab(
                                     new Notice('RSS: failed to purge entries.', 4000);
                                 } finally {
                                     btn.setButtonText(`Purge ${label} entries`);
-                                    btn.buttonEl.setCssProps({ background: '' });
+                                    setDynamicCss(btn.buttonEl, { background: '' });
                                     btn.setDisabled(false);
                                 }
                             }

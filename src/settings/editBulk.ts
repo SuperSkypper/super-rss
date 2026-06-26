@@ -2,6 +2,7 @@ import { App, Modal, Notice } from 'obsidian';
 import RssPlugin from '../main';
 import { renderVariableReference } from './settingsTemplate';
 import { sortGroups } from './editFolders';
+import { setDynamicCss } from "../utils/css";
 
 type IntervalUnit = 'minutes' | 'hours' | 'days' | 'months';
 type CleanupDateField = 'global' | 'datepub' | 'datesaved';
@@ -85,13 +86,13 @@ export function openBulkEditModal(
             contentEl.empty();
 
             // Fixed height — same approach as FeedEditModal so tabs don't resize
-            this.modalEl.setCssProps({ 'width': '860px' });
-            this.modalEl.setCssProps({ 'max-width': '95vw' });
-            this.modalEl.setCssProps({ 'height': 'min(720px, 90vh)' });
-            this.modalEl.setCssProps({ 'max-height': 'none' });
-            this.modalEl.setCssProps({ 'overflow': 'hidden' });
-            this.modalEl.setCssProps({ 'display': 'flex' });
-            this.modalEl.setCssProps({ 'flex-direction': 'column' });
+            setDynamicCss(this.modalEl, { 'width': '860px' });
+            setDynamicCss(this.modalEl, { 'max-width': '95vw' });
+            setDynamicCss(this.modalEl, { 'height': 'min(720px, 90vh)' });
+            setDynamicCss(this.modalEl, { 'max-height': 'none' });
+            setDynamicCss(this.modalEl, { 'overflow': 'hidden' });
+            setDynamicCss(this.modalEl, { 'display': 'flex' });
+            setDynamicCss(this.modalEl, { 'flex-direction': 'column' });
 
             applyCssText(contentEl, 'display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; overflow: hidden; padding: 0;');
 
@@ -122,9 +123,9 @@ export function openBulkEditModal(
                 applyCssText(feedTabBtn, `${base}${activeTab === 'feed'      ? active : inactive}`);
                 applyCssText(overridesTabBtn, `${base}${activeTab === 'overrides' ? active : inactive}`);
                 applyCssText(customTabBtn, `${base}${activeTab === 'custom'    ? active : inactive}`);
-                feedContent.setCssProps({ 'display': activeTab === 'feed'      ? 'block' : 'none' });
-                overridesContent.setCssProps({ 'display': activeTab === 'overrides' ? 'block' : 'none' });
-                customContent.setCssProps({ 'display': activeTab === 'custom'    ? 'block' : 'none' });
+                setDynamicCss(feedContent, { 'display': activeTab === 'feed'      ? 'block' : 'none' });
+                setDynamicCss(overridesContent, { 'display': activeTab === 'overrides' ? 'block' : 'none' });
+                setDynamicCss(customContent, { 'display': activeTab === 'custom'    ? 'block' : 'none' });
             };
 
             feedTabBtn.onclick      = () => { if (activeTab !== 'feed')      { activeTab = 'feed';      updateTabView(); } };
@@ -164,9 +165,9 @@ export function openBulkEditModal(
                 padding: 12px 18px;
                 transition: border-color 0.15s ease;
             `);
-            card.onmouseenter = () => { card.setCssProps({ 'border-color': 'var(--interactive-accent)' }); };
+            card.onmouseenter = () => { setDynamicCss(card, { 'border-color': 'var(--interactive-accent)' }); };
             card.onmouseleave = () => {
-                card.setCssProps({ 'border-color': cb.checked
+                setDynamicCss(card, { 'border-color': cb.checked
                     ? 'var(--interactive-accent)'
                     : 'var(--background-modifier-border)' });
             };
@@ -175,7 +176,7 @@ export function openBulkEditModal(
                 if (!cb.checked) {
                     cb.checked = true;
                     this.apply[fieldKey] = true;
-                    card.setCssProps({ 'border-color': 'var(--interactive-accent)' });
+                    setDynamicCss(card, { 'border-color': 'var(--interactive-accent)' });
                 }
             };
 
@@ -183,7 +184,7 @@ export function openBulkEditModal(
 
             cb.addEventListener('change', () => {
                 this.apply[fieldKey] = cb.checked;
-                card.setCssProps({ 'border-color': cb.checked
+                setDynamicCss(card, { 'border-color': cb.checked
                     ? 'var(--interactive-accent)'
                     : 'var(--background-modifier-border)' });
             });
@@ -214,7 +215,7 @@ export function openBulkEditModal(
                 const row = card.createDiv();
                 applyCssText(row, 'display: flex; align-items: center; gap: 12px;');
                 const toggleEl = row.createEl('div', { cls: 'checkbox-container' });
-                toggleEl.setCssProps({ 'margin': '0' });
+                setDynamicCss(toggleEl, { 'margin': '0' });
                 if (this.values.enabled) toggleEl.classList.add('is-enabled');
                 const stateLabel = row.createEl('span', { text: this.values.enabled ? 'Enabled' : 'Disabled' });
                 applyCssText(stateLabel, 'font-size: 0.85em; color: var(--text-muted);');

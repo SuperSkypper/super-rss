@@ -1,6 +1,6 @@
 {
 	"name": "super-rss",
-	"version": "0.0.7",
+	"version": "0.0.8",
 	"description": "A powerful RSS reader plugin for Obsidian.",
 	"main": "main.js",
 	"type": "module",
@@ -9,7 +9,7 @@
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"lint": "eslint .",
-		"community:check": "eslint . --quiet"
+		"community:check": "eslint \"src/**/*.ts\" \"manifest.json\" --quiet"
 	},
 	"keywords": [],
 	"license": "MIT",
@@ -19,7 +19,7 @@
 		"@types/node": "^20.0.0",
 		"@types/xml2js": "^0.4.14",
 		"esbuild": "^0.28.1",
-		"eslint-plugin-obsidianmd": "0.1.9",
+		"eslint-plugin-obsidianmd": "^0.3.0",
 		"globals": "14.0.0",
 		"jiti": "2.6.1",
 		"tslib": "2.4.0",

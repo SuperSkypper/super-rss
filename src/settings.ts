@@ -8,6 +8,7 @@ import { AddUrlModal }             from './settings/feedAdd';
 import { addFeed }                 from './settings/feedAdd';
 import { runCleanupAndDedup }      from './settings/feedCleanup';
 import { tagDuplicatesInVault }    from './settings/feedDuplicate';
+import { setDynamicCss } from "./utils/css";
 
 interface ObsidianPluginManager {
     disablePlugin: (pluginId: string) => Promise<void>;
@@ -64,13 +65,13 @@ export class RssSettingTab extends PluginSettingTab {
             overflow: visible;
         `);
         settingEl.classList.add('rss-card-setting');
-        settingEl.onmouseenter = () => { settingEl.setCssProps({ 'border-color': 'var(--interactive-accent)' }); };
-        settingEl.onmouseleave = () => { settingEl.setCssProps({ 'border-color': 'var(--background-modifier-border)' }); };
+        settingEl.onmouseenter = () => { setDynamicCss(settingEl, { 'border-color': 'var(--interactive-accent)' }); };
+        settingEl.onmouseleave = () => { setDynamicCss(settingEl, { 'border-color': 'var(--background-modifier-border)' }); };
     }
 
     private autoResize(el: HTMLTextAreaElement) {
-        el.setCssProps({ 'height': 'auto' });
-        el.setCssProps({ 'height': el.scrollHeight + 'px' });
+        setDynamicCss(el, { 'height': 'auto' });
+        setDynamicCss(el, { 'height': el.scrollHeight + 'px' });
     }
 
     private renderActiveTab(
@@ -167,8 +168,8 @@ export class RssSettingTab extends PluginSettingTab {
         const stopIcon = stopBtn.createDiv();
         applyCssText(stopIcon, 'display: flex; align-items: center; width: 16px; height: 16px;');
         setIcon(stopIcon, 'square');
-        stopBtn.addEventListener('mouseenter', () => { stopBtn.setCssProps({ 'color': 'var(--color-red)' }); stopBtn.setCssProps({ 'border-color': 'var(--color-red)' }); });
-        stopBtn.addEventListener('mouseleave', () => { stopBtn.setCssProps({ 'color': 'var(--text-muted)' }); stopBtn.setCssProps({ 'border-color': 'var(--background-modifier-border)' }); });
+        stopBtn.addEventListener('mouseenter', () => { setDynamicCss(stopBtn, { 'color': 'var(--color-red)' }); setDynamicCss(stopBtn, { 'border-color': 'var(--color-red)' }); });
+        stopBtn.addEventListener('mouseleave', () => { setDynamicCss(stopBtn, { 'color': 'var(--text-muted)' }); setDynamicCss(stopBtn, { 'border-color': 'var(--background-modifier-border)' }); });
         stopBtn.onclick = () => { void this.plugin.stopUpdate(); };
 
         // ── Cleanup button ────────────────────────────────────────────────────
@@ -186,8 +187,8 @@ export class RssSettingTab extends PluginSettingTab {
         const cleanupIcon = cleanupBtn.createDiv();
         applyCssText(cleanupIcon, 'display: flex; align-items: center; width: 16px; height: 16px;');
         setIcon(cleanupIcon, 'trash');
-        cleanupBtn.addEventListener('mouseenter', () => { cleanupBtn.setCssProps({ 'color': 'var(--color-red)' }); cleanupBtn.setCssProps({ 'border-color': 'var(--color-red)' }); });
-        cleanupBtn.addEventListener('mouseleave', () => { cleanupBtn.setCssProps({ 'color': 'var(--text-muted)' }); cleanupBtn.setCssProps({ 'border-color': 'var(--background-modifier-border)' }); });
+        cleanupBtn.addEventListener('mouseenter', () => { setDynamicCss(cleanupBtn, { 'color': 'var(--color-red)' }); setDynamicCss(cleanupBtn, { 'border-color': 'var(--color-red)' }); });
+        cleanupBtn.addEventListener('mouseleave', () => { setDynamicCss(cleanupBtn, { 'color': 'var(--text-muted)' }); setDynamicCss(cleanupBtn, { 'border-color': 'var(--background-modifier-border)' }); });
         cleanupBtn.onclick = () => {
             void (async () => {
             new Notice('Running cleanup...', 3000);
@@ -205,26 +206,26 @@ export class RssSettingTab extends PluginSettingTab {
             const btn = tabHeader.createEl('button', { text: label });
             applyCssText(btn, `padding: 6px 16px; ${this.isTouchDevice() ? 'min-height: 44px;' : ''} border-radius: 6px; cursor: pointer; font-size: 0.9em; border: 1px solid var(--background-modifier-border); transition: all 0.2s ease;`);
             if (this.activeTab === id) {
-                btn.setCssProps({ 'background-color': 'var(--interactive-accent)' });
-                btn.setCssProps({ 'color': 'var(--text-on-accent)' });
-                btn.setCssProps({ 'border-color': 'var(--interactive-accent)' });
+                setDynamicCss(btn, { 'background-color': 'var(--interactive-accent)' });
+                setDynamicCss(btn, { 'color': 'var(--text-on-accent)' });
+                setDynamicCss(btn, { 'border-color': 'var(--interactive-accent)' });
             } else {
-                btn.setCssProps({ 'background-color': 'var(--background-secondary-alt)' });
-                btn.setCssProps({ 'color': 'var(--text-muted)' });
-                btn.setCssProps({ 'border-color': 'var(--background-modifier-border)' });
+                setDynamicCss(btn, { 'background-color': 'var(--background-secondary-alt)' });
+                setDynamicCss(btn, { 'color': 'var(--text-muted)' });
+                setDynamicCss(btn, { 'border-color': 'var(--background-modifier-border)' });
             }
             btn.onclick = () => {
                 if (this.activeTab === id) return;
                 this.activeTab = id;
                 tabBtns.forEach((b, bid) => {
                     if (bid === id) {
-                        b.setCssProps({ 'background-color': 'var(--interactive-accent)' });
-                        b.setCssProps({ 'color': 'var(--text-on-accent)' });
-                        b.setCssProps({ 'border-color': 'var(--interactive-accent)' });
+                        setDynamicCss(b, { 'background-color': 'var(--interactive-accent)' });
+                        setDynamicCss(b, { 'color': 'var(--text-on-accent)' });
+                        setDynamicCss(b, { 'border-color': 'var(--interactive-accent)' });
                     } else {
-                        b.setCssProps({ 'background-color': 'var(--background-secondary-alt)' });
-                        b.setCssProps({ 'color': 'var(--text-muted)' });
-                        b.setCssProps({ 'border-color': 'var(--background-modifier-border)' });
+                        setDynamicCss(b, { 'background-color': 'var(--background-secondary-alt)' });
+                        setDynamicCss(b, { 'color': 'var(--text-muted)' });
+                        setDynamicCss(b, { 'border-color': 'var(--background-modifier-border)' });
                     }
                 });
                 refresh();
@@ -281,8 +282,8 @@ export class RssSettingTab extends PluginSettingTab {
             const tagDupIcon = tagDupBtn.createDiv();
             applyCssText(tagDupIcon, 'display: flex; align-items: center; width: 16px; height: 16px;');
             setIcon(tagDupIcon, 'copy');
-            tagDupBtn.addEventListener('mouseenter', () => { tagDupBtn.setCssProps({ 'color': 'var(--interactive-accent)' }); tagDupBtn.setCssProps({ 'border-color': 'var(--interactive-accent)' }); });
-            tagDupBtn.addEventListener('mouseleave', () => { tagDupBtn.setCssProps({ 'color': 'var(--text-muted)' }); tagDupBtn.setCssProps({ 'border-color': 'var(--background-modifier-border)' }); });
+            tagDupBtn.addEventListener('mouseenter', () => { setDynamicCss(tagDupBtn, { 'color': 'var(--interactive-accent)' }); setDynamicCss(tagDupBtn, { 'border-color': 'var(--interactive-accent)' }); });
+            tagDupBtn.addEventListener('mouseleave', () => { setDynamicCss(tagDupBtn, { 'color': 'var(--text-muted)' }); setDynamicCss(tagDupBtn, { 'border-color': 'var(--background-modifier-border)' }); });
             tagDupBtn.onclick = () => {
                 void (async () => {
                 tagDupBtn.disabled = true;

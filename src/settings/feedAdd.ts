@@ -2,6 +2,7 @@ import { App, Modal, Setting, Notice } from 'obsidian';
 import RssPlugin, { FeedConfig } from '../main';
 import { fetchAndExtract } from './feedExtractor';
 import { FeedEditModal } from './feedEdit';
+import { setDynamicCss } from "../utils/css";
 
 function applyCssText(element: HTMLElement, cssText: string): void {
     const properties: Record<string, string> = {};
@@ -65,10 +66,10 @@ export class AddUrlModal extends Modal {
             .setName('Feed address')
             .setDesc('Enter the feed link.');
 
-        urlSetting.settingEl.setCssProps({ 'flex-direction': 'column' });
-        urlSetting.settingEl.setCssProps({ 'align-items': 'flex-start' });
-        urlSetting.controlEl.setCssProps({ 'width': '100%' });
-        urlSetting.controlEl.setCssProps({ 'margin-top': '8px' });
+        setDynamicCss(urlSetting.settingEl, { 'flex-direction': 'column' });
+        setDynamicCss(urlSetting.settingEl, { 'align-items': 'flex-start' });
+        setDynamicCss(urlSetting.controlEl, { 'width': '100%' });
+        setDynamicCss(urlSetting.controlEl, { 'margin-top': '8px' });
 
         const urlInput = urlSetting.controlEl.createEl('input', { type: 'text' });
         urlInput.placeholder    = 'https://example.com/rss.xml';
