@@ -6,11 +6,114 @@ import { injectDuplicateTag } from './feedDuplicate';
 import { loadAutoDatabase, loadUserDatabase, saveAutoDatabase, saveUserDatabase, registerAuto, isKnown, getStatus, AutoDatabase, UserDatabase } from './feedDatabase';
 export { cleanupOldFiles, deleteOrphanedDbArticles } from './feedDelete';
 
+interface InternalPluginEntry {
+    instance?: unknown;
+}
+
+interface InternalPluginsApp extends App {
+    internalPlugins?: {
+        plugins?: Record<string, InternalPluginEntry | undefined>;
+    };
+}
+
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
 function toLocalISOString(date: Date): string {
     const offset = date.getTimezoneOffset() * 60000;
     return new Date(date.getTime() - offset).toISOString().split('.')[0] ?? '';
+}
+
+function getObjectPath(value: unknown): string | undefined {
+    if (typeof value === 'string') return value;
+    if (!value || typeof value !== 'object') return undefined;
+
+    const record = value as Record<string, unknown>;
+    if (typeof record.path === 'string') return record.path;
+    if (typeof record.file === 'object' && record.file !== null) {
+        const filePath = (record.file as Record<string, unknown>).path;
+        if (typeof filePath === 'string') return filePath;
+    }
+
+    return undefined;
+}
+
+function removePathFromArray(values: unknown[], filePath: string): boolean {
+    let changed = false;
+    for (let i = values.length - 1; i >= 0; i--) {
+        if (getObjectPath(values[i]) === filePath) {
+            values.splice(i, 1);
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+function removePathFromMap(values: Map<unknown, unknown>, filePath: string): boolean {
+    let changed = false;
+    for (const [key, value] of values.entries()) {
+        if (getObjectPath(key) === filePath || getObjectPath(value) === filePath) {
+            values.delete(key);
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+function removePathFromSet(values: Set<unknown>, filePath: string): boolean {
+    let changed = false;
+    for (const value of Array.from(values)) {
+        if (getObjectPath(value) === filePath) {
+            values.delete(value);
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+function pruneRecentPath(value: unknown, filePath: string, seen = new Set<unknown>(), depth = 0): boolean {
+    if (!value || typeof value !== 'object' || seen.has(value) || depth > 4) return false;
+    seen.add(value);
+
+    let changed = false;
+
+    if (Array.isArray(value)) return removePathFromArray(value, filePath);
+    if (value instanceof Map) return removePathFromMap(value, filePath);
+    if (value instanceof Set) return removePathFromSet(value, filePath);
+
+    const record = value as Record<string, unknown>;
+    for (const [key, child] of Object.entries(record)) {
+        const keyLooksRelevant = /recent|history|open/i.test(key);
+        if (Array.isArray(child) && keyLooksRelevant) {
+            changed = removePathFromArray(child, filePath) || changed;
+        } else if (child instanceof Map && keyLooksRelevant) {
+            changed = removePathFromMap(child, filePath) || changed;
+        } else if (child instanceof Set && keyLooksRelevant) {
+            changed = removePathFromSet(child, filePath) || changed;
+        } else if (child && typeof child === 'object') {
+            changed = pruneRecentPath(child, filePath, seen, depth + 1) || changed;
+        }
+    }
+
+    return changed;
+}
+
+function forgetAutoSavedFileFromRecentHistory(app: App, filePath: string): void {
+    const plugins = (app as InternalPluginsApp).internalPlugins?.plugins;
+    if (!plugins) return;
+
+    const pluginIds = ['switcher', 'quick-switcher', 'recent-files', 'file-explorer'];
+    for (const pluginId of pluginIds) {
+        const instance = plugins[pluginId]?.instance;
+        if (pruneRecentPath(instance, filePath)) {
+            const saveData = (instance as { saveData?: () => void | Promise<void> } | undefined)?.saveData;
+            void saveData?.call(instance);
+        }
+    }
+}
+
+function scheduleForgetAutoSavedFile(app: App, filePath: string): void {
+    forgetAutoSavedFileFromRecentHistory(app, filePath);
+    window.setTimeout(() => forgetAutoSavedFileFromRecentHistory(app, filePath), 250);
 }
 
 // ─── Shorts detection & tag injection ────────────────────────────────────────
@@ -224,8 +327,10 @@ export async function saveFeedItem(
     const processedBody   = applyTemplate(contentTemplate, item, false, false, feedName, dateSaved);
 
     const finalContent = `---\n${processedFrontmatter}\n---\n\n${processedBody}`;
+    let createdFile = false;
     try {
         await vault.create(filePath, finalContent);
+        createdFile = true;
     } catch (e: unknown) {
         // Another concurrent update already created this file — treat as success.
         // Any other error is re-thrown so the caller knows the save failed.
@@ -233,6 +338,10 @@ export async function saveFeedItem(
         if (!message.toLowerCase().includes('already exists')) {
             throw e;
         }
+    }
+
+    if (createdFile) {
+        scheduleForgetAutoSavedFile(app, filePath);
     }
 
     if (ownDb) await saveAutoDatabase(app, db);
