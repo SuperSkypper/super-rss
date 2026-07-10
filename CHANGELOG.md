@@ -1,3 +1,8 @@
+# Changelog - v0.0.8
+
+## Fixes
+- Prevent auto-saved RSS article notes from being left at the top of Obsidian's recent-file history after feed updates, reducing Quick Switcher noise from background article downloads.
+
 # Changelog - v0.0.7
 
 ## Community review fixes
