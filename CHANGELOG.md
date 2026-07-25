@@ -1,3 +1,8 @@
+# Changelog - v0.0.9
+
+## Technical updates
+- Updated `defuddle` from `0.19.1` to `0.19.2`, bringing the latest article extraction fixes and improvements.
+
 # Changelog - v0.0.8
 
 ## Fixes
