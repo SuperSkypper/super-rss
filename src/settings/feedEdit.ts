@@ -416,7 +416,7 @@ export class FeedEditModal extends Modal {
             const cache = metadataCache.getFileCache(file);
             const tags  = [
                 ...(cache?.tags?.map(t => t.tag) ?? []),
-                ...(isStringArray((cache?.frontmatter as Record<string, unknown> | undefined)?.tags)
+                ...(isStringArray((cache?.frontmatter)?.tags)
                     ? (cache?.frontmatter as Record<string, unknown>).tags as string[]
                     : []),
             ].map((t: string) => t.replace(/^#/, '').toLowerCase());

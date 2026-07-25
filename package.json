@@ -19,17 +19,17 @@
 		"@types/node": "^20.0.0",
 		"@types/xml2js": "^0.4.14",
 		"esbuild": "^0.28.1",
-		"eslint-plugin-obsidianmd": "^0.3.0",
+		"eslint-plugin-obsidianmd": "^0.4.1",
 		"globals": "14.0.0",
 		"jiti": "2.6.1",
 		"tslib": "2.4.0",
-		"typescript": "^5.8.3",
-		"typescript-eslint": "8.35.1"
+		"typescript": "^5.9.3",
+		"typescript-eslint": "^8.65.0"
 	},
 	"dependencies": {
 		"@mozilla/readability": "^0.6.0",
-		"defuddle": "^0.19.1",
-		"linkedom": "^0.18.12",
+		"defuddle": "^0.19.2",
+		"linkedom": "^0.18.13",
 		"obsidian": "^1.13.1",
 		"xml2js": "^0.6.2"
 	}

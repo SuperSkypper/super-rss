@@ -228,7 +228,7 @@ function debounce<T extends (...args: unknown[]) => void | Promise<void>>(
         timer = window.setTimeout(() => {
             void fn(...args);
         }, ms);
-    }) as (...args: Parameters<T>) => void;
+    });
 }
 
 function renderFileNameSetting(
