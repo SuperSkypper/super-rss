@@ -31,7 +31,7 @@ jobs:
         run: npm run build
 
       - name: Package plugin zip
-        run: zip super-rss.zip main.js manifest.json styles.css CHANGELOG.md versions.json LICENSE README.md
+        run: zip super-rss.zip main.js manifest.json styles.css
 
       - name: Generate artifact attestations
         uses: actions/attest-build-provenance@v2
@@ -54,8 +54,4 @@ jobs:
             manifest.json
             styles.css
             super-rss.zip
-            CHANGELOG.md
-            versions.json
-            LICENSE
-            README.md
           prerelease: false

@@ -1,3 +1,15 @@
+# Changelog - v0.0.9
+
+## Fixes
+- Updated `defuddle` from `0.19.2` to `0.19.4`, which fixes unwanted spaces around inline code, superscripts, subscripts, typographic quotes and dashes; preserves MathML in arXiv equation tables; preserves declarative shadow DOM content; and prefers the default YouTube caption language over translations.
+
+## Security
+- Updated `moment` to `2.31.0` to fix a path traversal advisory triggered through crafted locale names.
+
+## Technical updates
+- Fixed the ESLint configuration referencing the obsolete `eslint.config.js` name, which caused the lint task to fail on its own config file.
+- Reduced the release attachments to only the files needed to install the plugin.
+
 # Changelog - v0.0.8
 
 ## Fixes

@@ -1,6 +1,6 @@
 {
 	"name": "super-rss",
-	"version": "0.0.8",
+	"version": "0.0.9",
 	"description": "A powerful RSS reader plugin for Obsidian.",
 	"main": "main.js",
 	"type": "module",
@@ -28,9 +28,12 @@
 	},
 	"dependencies": {
 		"@mozilla/readability": "^0.6.0",
-		"defuddle": "^0.19.2",
+		"defuddle": "^0.19.4",
 		"linkedom": "^0.18.13",
 		"obsidian": "^1.13.1",
 		"xml2js": "^0.6.2"
+	},
+	"overrides": {
+		"moment": "^2.31.0"
 	}
 }
