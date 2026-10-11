@@ -1,3 +1,8 @@
+# Changelog - v0.0.10
+
+## Fixes
+- Updated `defuddle` from `0.19.4` to `0.19.5`, which hardens Markdown escaping for links, images, footnotes, callouts, code blocks and math, so page content can no longer turn into unintended markup or unsafe links; fixes lazy-loaded images keeping the wrong URL when extra source attributes are present; preserves screen-reader text while dropping redundant link annotations; and fixes extraction on pages with special characters in IDs and classes, including Tailwind classes and React streaming content.
+
 # Changelog - v0.0.9
 
 ## Fixes
