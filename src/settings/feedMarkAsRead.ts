@@ -1,5 +1,6 @@
 import { App, Notice, normalizePath, TFile } from 'obsidian';
 import { PluginSettings } from '../main';
+import { getMarkdownFilesInFolder } from '../utils/vaultFiles';
 
 // ─── URI protocol ─────────────────────────────────────────────────────────────
 
@@ -45,7 +46,7 @@ export function buildMarkAsReadLink(filePath: string, settings: PluginSettings):
  * params['file'] contains the correct decoded vault path.
  * Do NOT decode again here — use params['file'] directly.
  */
-export async function handleMarkAsRead(app: App, params: Record<string, string>): Promise<void> {
+export async function handleMarkAsRead(app: App, params: Record<string, string>, settings: PluginSettings): Promise<void> {
     const fileParam   = params['file']     ?? '';
     const propertyKey = params['property'] ?? 'Read';
 
@@ -59,7 +60,7 @@ export async function handleMarkAsRead(app: App, params: Record<string, string>)
 
     // Backward compatibility for links created before path-based Mark as Read.
     if (!(file instanceof TFile)) {
-        file = app.vault.getMarkdownFiles().find(f => f.basename === fileParam) ?? null;
+        file = getMarkdownFilesInFolder(app.vault, settings.folderPath).find(f => f.basename === fileParam) ?? null;
     }
 
     if (!(file instanceof TFile)) {

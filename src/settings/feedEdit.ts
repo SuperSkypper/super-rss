@@ -4,6 +4,7 @@ import { renderVariableReference } from './settingsTemplate';
 import { openEditFoldersModal, promptFolderName } from './editFolders';
 import { discardVaultFile } from './feedDelete';
 import { setDynamicCss } from "../utils/css";
+import { getMarkdownFilesInFolder } from '../utils/vaultFiles';
 
 function isStringArray(value: unknown): value is string[] {
     return Array.isArray(value) && value.every(item => typeof item === 'string');
@@ -206,7 +207,7 @@ export class FeedEditModal extends Modal {
                 });
             });
 
-        const addFolderBtn = activeDocument.createElement('button');
+        const addFolderBtn = createEl('button');
         addFolderBtn.title = 'New folder';
         applyCssText(addFolderBtn, 'display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 5px; border: 1px solid var(--background-modifier-border); background: transparent; cursor: pointer; color: var(--text-muted); transition: all 0.12s ease; flex-shrink: 0; margin-right: 6px;');
         addFolderBtn.addEventListener('mouseenter', () => { setDynamicCss(addFolderBtn, { 'border-color': 'var(--interactive-accent)' }); setDynamicCss(addFolderBtn, { 'color': 'var(--text-normal)' }); });
@@ -409,7 +410,7 @@ export class FeedEditModal extends Modal {
             return;
         }
 
-        const files = vault.getMarkdownFiles().filter(f => f.path.startsWith(feedPath + '/'));
+        const files = getMarkdownFilesInFolder(vault, feedPath);
         let deletedCount = 0;
 
         for (const file of files) {
@@ -443,7 +444,7 @@ export class FeedEditModal extends Modal {
     private async moveFeedArticlesToTrash(): Promise<void> {
         const { vault, fileManager } = this.plugin.app;
         const feedPath = resolveFeedPath(this.feed, this.plugin.settings);
-        const files = vault.getMarkdownFiles().filter(f => f.path.startsWith(feedPath + '/'));
+        const files = getMarkdownFilesInFolder(vault, feedPath);
         if (files.length === 0) return;
 
         // Files are trashed without updating the DB — on the next update, saveFeedItem
@@ -543,9 +544,9 @@ export class FeedEditModal extends Modal {
 
         const header = wrapper.createDiv();
         applyCssText(header, 'display: flex; align-items: center; gap: 8px; margin-bottom: 4px;');
-        header.createEl('span', { text: opts.icon });
+        header.createSpan({ text: opts.icon });
 
-        const titleEl = header.createEl('span', { text: opts.title });
+        const titleEl = header.createSpan({ text: opts.title });
         applyCssText(titleEl, 'font-weight: 600; font-size: 0.88em; color: var(--text-normal);');
 
         const desc = wrapper.createEl('p', { text: opts.desc });
@@ -646,7 +647,7 @@ export class FeedEditModal extends Modal {
                 animation: rss-spin 0.7s linear infinite;
             `);
 
-            const label = overlay.createEl('span', { text: 'Saving settings...' });
+            const label = overlay.createSpan({ text: 'Saving settings...' });
             applyCssText(label, 'color: white; font-size: 0.9em; opacity: 0.85;');
 
             saveBtn.disabled   = true;

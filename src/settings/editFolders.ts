@@ -43,7 +43,7 @@ export function showGlobalLoading(message = 'Saving...'): () => void {
         animation: rss-spin 0.7s linear infinite;
     `);
 
-    const label = overlay.createEl('span', { text: message });
+    const label = overlay.createSpan({ text: message });
     applyCssText(label, 'color: white; font-size: 0.9em; opacity: 0.9;');
 
     return () => overlay.remove();
@@ -313,11 +313,11 @@ export function openEditFoldersModal(
             applyCssText(folderIconEl, 'display: flex; align-items: center; width: 16px; height: 16px; flex-shrink: 0; color: var(--text-muted);');
             setIcon(folderIconEl, 'folder');
 
-            const nameEl = row.createEl('span', { text: group.name });
+            const nameEl = row.createSpan({ text: group.name });
             applyCssText(nameEl, 'flex: 1; font-size: 0.9em; color: var(--text-normal);');
 
             const feedCount = plugin.settings.feeds.filter(f => f.groupId === group.id).length;
-            const countBadge = row.createEl('span', { text: `${feedCount} feed${feedCount !== 1 ? 's' : ''}` });
+            const countBadge = row.createSpan({ text: `${feedCount} feed${feedCount !== 1 ? 's' : ''}` });
             applyCssText(countBadge, 'font-size: 0.78em; color: var(--text-muted); background: var(--background-modifier-hover); border-radius: 4px; padding: 2px 6px; white-space: nowrap;');
 
             // ── Rename ────────────────────────────────────────────────────────

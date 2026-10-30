@@ -7,6 +7,7 @@ import { deleteLiveArticlesForFeed, runAutoCleanup, FileMeta, resolveLinkFromFil
 import { loadAutoDatabase, saveAutoDatabase, loadUserDatabase, isKnown, AutoDatabase } from './feedDatabase';
 import { tagDuplicatesInVault } from './feedDuplicate';
 import { extractImageUrl, upgradeYoutubeThumbnail } from './imageHandler';
+import { getMarkdownFilesInFolder } from '../utils/vaultFiles';
 
 // ── Update lockfile ───────────────────────────────────────────────────────────
 
@@ -89,7 +90,7 @@ export async function releaseLock(app: App): Promise<void> {
 
 async function collectRssFileCache(app: App, plugin: RssPlugin): Promise<FileMeta[]> {
     const rssFolderPath = normalizePath(plugin.settings.folderPath);
-    const allMdFiles = app.vault.getMarkdownFiles().filter(f => f.path.startsWith(rssFolderPath + '/'));
+    const allMdFiles = getMarkdownFilesInFolder(app.vault, rssFolderPath);
     const totalFiles = allMdFiles.length;
     const fileCache: FileMeta[] = [];
 
@@ -276,7 +277,7 @@ export async function updateAllFeeds(
 
         if (plugin.isUpdating && !plugin.stopRequested) {
             const rssFolderPath = normalizePath(plugin.settings.folderPath);
-            const allMdFiles = app.vault.getMarkdownFiles().filter(f => f.path.startsWith(rssFolderPath + '/'));
+            const allMdFiles = getMarkdownFilesInFolder(app.vault, rssFolderPath);
             const totalFiles = allMdFiles.length;
             const fileCache: FileMeta[] = [];
 

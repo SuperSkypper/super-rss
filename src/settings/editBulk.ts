@@ -195,8 +195,8 @@ export function openBulkEditModal(
         private cardHeader(card: HTMLElement, icon: string, title: string, desc?: string): void {
             const header = card.createDiv();
             applyCssText(header, 'display: flex; align-items: center; gap: 8px; margin-bottom: 4px;');
-            header.createEl('span', { text: icon });
-            const titleEl = header.createEl('span', { text: title });
+            header.createSpan({ text: icon });
+            const titleEl = header.createSpan({ text: title });
             applyCssText(titleEl, 'font-weight: 600; font-size: 0.88em; color: var(--text-normal);');
             if (desc) {
                 const descEl = card.createEl('p', { text: desc });
@@ -214,10 +214,10 @@ export function openBulkEditModal(
                 this.cardHeader(card, '⚡', 'Enable / Disable', 'Override the enabled state for all selected feeds.');
                 const row = card.createDiv();
                 applyCssText(row, 'display: flex; align-items: center; gap: 12px;');
-                const toggleEl = row.createEl('div', { cls: 'checkbox-container' });
+                const toggleEl = row.createDiv({ cls: 'checkbox-container' });
                 setDynamicCss(toggleEl, { 'margin': '0' });
                 if (this.values.enabled) toggleEl.classList.add('is-enabled');
-                const stateLabel = row.createEl('span', { text: this.values.enabled ? 'Enabled' : 'Disabled' });
+                const stateLabel = row.createSpan({ text: this.values.enabled ? 'Enabled' : 'Disabled' });
                 applyCssText(stateLabel, 'font-size: 0.85em; color: var(--text-muted);');
                 toggleEl.addEventListener('click', () => {
                     this.values.enabled = !this.values.enabled;
@@ -293,7 +293,7 @@ export function openBulkEditModal(
                 const deleteRow = card.createDiv();
                 applyCssText(deleteRow, 'display: flex; align-items: center; gap: 8px; margin-bottom: 10px;');
 
-                const deleteLabel = deleteRow.createEl('span', { text: 'Delete articles older than' });
+                const deleteLabel = deleteRow.createSpan({ text: 'Delete articles older than' });
                 applyCssText(deleteLabel, 'font-size: 0.85em; color: var(--text-muted); white-space: nowrap;');
 
                 const input = deleteRow.createEl('input', { type: 'text' });

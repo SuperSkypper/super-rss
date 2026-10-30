@@ -30,9 +30,6 @@ jobs:
       - name: Build plugin
         run: npm run build
 
-      - name: Package plugin zip
-        run: zip super-rss.zip main.js manifest.json styles.css
-
       - name: Generate artifact attestations
         uses: actions/attest-build-provenance@v2
         with:
@@ -40,7 +37,6 @@ jobs:
             main.js
             manifest.json
             styles.css
-            super-rss.zip
 
       - name: Extract latest version from CHANGELOG
         run: awk '/^# Changelog - v/{if (count++) exit} {print}' CHANGELOG.md > latest_changelog.md
@@ -53,5 +49,4 @@ jobs:
             main.js
             manifest.json
             styles.css
-            super-rss.zip
           prerelease: false

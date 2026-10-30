@@ -2,6 +2,7 @@ import { MetadataCache, Notice, setIcon } from 'obsidian';
 import RssPlugin, { FrontmatterMode, FrontmatterPropertyTemplate } from '../main';
 import { migrateLegacyFrontmatterTemplate } from './frontmatterMigration';
 import { setDynamicCss } from "../utils/css";
+import { getMarkdownFilesInFolder } from '../utils/vaultFiles';
 
 // ─── Variable definitions ─────────────────────────────────────────────────────
 // Single source of truth — imported by editFeed.ts too.
@@ -103,8 +104,8 @@ function createCardWrapper(containerEl: HTMLElement): HTMLDivElement {
 function createCardHeader(containerEl: HTMLElement, icon: string, title: string): void {
     const header = containerEl.createDiv();
     applyCssText(header, 'display:flex;align-items:center;gap:6px;margin-bottom:3px;');
-    header.createEl('span', { text: icon, attr: { 'aria-hidden': 'true' } });
-    const titleEl = header.createEl('span', { text: title });
+    header.createSpan({ text: icon, attr: { 'aria-hidden': 'true' } });
+    const titleEl = header.createSpan({ text: title });
     applyCssText(titleEl, 'font-weight:600;color:var(--text-normal);font-size:0.9em;');
 }
 
@@ -159,8 +160,8 @@ export function renderVariableReference(containerEl: HTMLElement): void {
     SCOPE_ICONS.forEach(({ icon, label }) => {
         const item = legend.createDiv({ attr: { role: 'listitem' } });
         applyCssText(item, 'display:flex;align-items:center;gap:5px;color:var(--text-muted);font-size:0.85em;');
-        item.createEl('span', { text: icon, attr: { 'aria-hidden': 'true' } });
-        item.createEl('span', { text: label });
+        item.createSpan({ text: icon, attr: { 'aria-hidden': 'true' } });
+        item.createSpan({ text: label });
     });
 
     // Variable grid
@@ -187,11 +188,11 @@ export function renderVariableReference(containerEl: HTMLElement): void {
         applyCssText(scopeIcons, 'display:flex;gap:3px;flex-shrink:0;font-size:0.9em;');
 
         SCOPE_ICONS.forEach(({ scope, icon }) => {
-            const el = scopeIcons.createEl('span', { text: icon });
+            const el = scopeIcons.createSpan({ text: icon });
             setDynamicCss(el, { 'opacity': v.scopes.includes(scope) ? '1' : '0.15' });
         });
 
-        const tagEl = row.createEl('span', { text: v.tag });
+        const tagEl = row.createSpan({ text: v.tag });
         applyCssText(tagEl, 'color:var(--text-accent);font-size:0.92em;font-weight:500;line-height:1.2;white-space:nowrap;');
 
         const handleCopy = async () => {
@@ -323,7 +324,7 @@ function getKnownPropertyNames(plugin: RssPlugin): string[] {
         });
     }
 
-    plugin.app.vault.getMarkdownFiles().forEach(file => {
+    getMarkdownFilesInFolder(plugin.app.vault, plugin.settings.folderPath).forEach(file => {
         const frontmatter = plugin.app.metadataCache.getFileCache(file)?.frontmatter;
         if (!frontmatter) return;
         Object.keys(frontmatter)

@@ -62,7 +62,7 @@ function buildOpmlXml(plugin: RssPlugin): string {
 function downloadOpml(xml: string): void {
     const blob = new Blob([xml], { type: 'text/xml' });
     const url  = URL.createObjectURL(blob);
-    const a    = activeDocument.createElement('a');
+    const a    = createEl('a');
     a.href     = url;
     a.download = `rss-feeds-${new Date().toISOString().slice(0, 10)}.opml`;
     try {
@@ -229,7 +229,7 @@ function showImportModal(
 
             const selectAllCheckbox = selectAllRow.createEl('input', { type: 'checkbox' });
             selectAllCheckbox.checked = true;
-            const selectAllLabel = selectAllRow.createEl('span', { text: 'Select or deselect all' });
+            const selectAllLabel = selectAllRow.createSpan({ text: 'Select or deselect all' });
             applyCssText(selectAllLabel, 'font-weight: 600;');
 
             selectAllCheckbox.onchange = () => {
@@ -248,7 +248,7 @@ function showImportModal(
                 if (catKey !== '__loose__') {
                     const catHeader = listContainer.createDiv();
                     applyCssText(catHeader, 'display: flex; align-items: center; gap: 6px; margin-top: 10px; margin-bottom: 2px; color: var(--text-accent); font-size: 0.85em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;');
-                    catHeader.createEl('span', { text: `📁 ${catKey}` });
+                    catHeader.createSpan({ text: `📁 ${catKey}` });
                 }
 
                 catFeeds.forEach(feed => {
@@ -268,14 +268,14 @@ function showImportModal(
                     const info = row.createDiv();
                     applyCssText(info, 'flex: 1; min-width: 0;');
 
-                    const nameEl = info.createEl('div', { text: feed.name });
+                    const nameEl = info.createDiv({ text: feed.name });
                     applyCssText(nameEl, 'font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;');
 
-                    const urlEl = info.createEl('div', { text: feed.url });
+                    const urlEl = info.createDiv({ text: feed.url });
                     applyCssText(urlEl, 'font-size: 0.8em; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-monospace);');
 
                     if (feed.isDupe) {
-                        const dupeTag = row.createEl('span', { text: 'Already exists' });
+                        const dupeTag = row.createSpan({ text: 'Already exists' });
                         applyCssText(dupeTag, 'font-size: 0.75em; color: var(--text-muted); background: var(--background-modifier-border); padding: 2px 6px; border-radius: 4px; flex-shrink: 0;');
                     }
 
@@ -348,8 +348,8 @@ export function renderOpmlTab(
         line-height: 1.6;
         margin-bottom: 4px;
     `);
-    infoBox.createEl('div', { text: 'Use this file format to share feed lists between readers.' });
-    const folderInfo = infoBox.createEl('div', { text: 'On export, folders become categories. On import, categories become folders.' });
+    infoBox.createDiv({ text: 'Use this file format to share feed lists between readers.' });
+    const folderInfo = infoBox.createDiv({ text: 'On export, folders become categories. On import, categories become folders.' });
     setDynamicCss(folderInfo, { 'margin-top': '4px' });
 
     // ── Import ────────────────────────────────────────────────────────────────
@@ -362,7 +362,7 @@ export function renderOpmlTab(
         .addButton(btn => btn
             .setButtonText('Import feeds')
             .onClick(() => {
-                const input = activeDocument.createElement('input');
+                const input = createEl('input');
                 input.type   = 'file';
                 input.accept = '.opml,.xml';
 

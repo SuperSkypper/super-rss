@@ -153,7 +153,7 @@ function createVirtualList(
             const feed = items[i];
             if (!feed) continue;
 
-            const el = activeDocument.createElement('div');
+            const el = createDiv();
             applyCssText(el, `position:absolute;top:${i * cardHeight}px;left:0;right:0;`);
             renderCard(feed, el);
             itemsEl.appendChild(el);
@@ -242,7 +242,7 @@ export function renderMyFeedsTab(
     let searchQuery: string = '';
     const selectedFeeds = new Set<string>();
 
-    const title = containerEl.createEl('div', { text: 'Manage feeds' });
+    const title = containerEl.createDiv({ text: 'Manage feeds' });
     applyCssText(title, 'font-size: 1.1em; font-weight: 600; color: var(--text-normal); margin-bottom: 10px;');
 
     // ── Tab filter bar ────────────────────────────────────────────────────────
@@ -494,7 +494,7 @@ export function renderMyFeedsTab(
         if (hasSelection) {
             const tgWrap = controlsCard.createDiv();
             applyCssText(tgWrap, CONTROL_WRAPPER_CSS);
-            const toggleEl = tgWrap.createEl('div', { cls: 'checkbox-container' });
+            const toggleEl = tgWrap.createDiv({ cls: 'checkbox-container' });
             setDynamicCss(toggleEl, { margin: '0' });
             const selList = plugin.settings.feeds.filter((f: FeedConfig) => selectedFeeds.has(f.url));
             const allOn   = selList.every((f: FeedConfig) => f.enabled);
@@ -761,7 +761,7 @@ function renderFeedCard(
     const toggleWrapper = cardEl.createDiv();
     toggleWrapper.classList.add('rss-feed-card-toggle');
     applyCssText(toggleWrapper, CONTROL_WRAPPER_CSS);
-    const toggleEl = toggleWrapper.createEl('div', { cls: 'checkbox-container' });
+    const toggleEl = toggleWrapper.createDiv({ cls: 'checkbox-container' });
     setDynamicCss(toggleEl, { margin: '0' });
     if (feed.enabled) toggleEl.classList.add('is-enabled');
     toggleEl.addEventListener('click', () => {

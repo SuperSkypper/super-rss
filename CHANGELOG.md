@@ -1,3 +1,14 @@
+# Changelog - v0.0.11
+
+## Community review fixes
+- Added a `getSettingDefinitions()` implementation to satisfy the declarative settings check while keeping the plugin's custom settings UI on every Obsidian version.
+- Replaced native DOM creation with Obsidian's `createEl`/`createDiv`/`createSpan` helpers, clearing all `prefer-create-el` warnings.
+- Scoped vault file lookups to the RSS folder instead of enumerating every file in the vault, removing the vault enumeration recommendation.
+- Release workflow now attaches only `main.js`, `manifest.json` and `styles.css` (no extra zip).
+
+## Fixes
+- Updated `defuddle` from `0.19.5` to `0.19.6`, which fixes HTML kept in Markdown output (embeds, SVG, superscripts, and complex tables) carrying unsafe links and event handlers, or Markdown that renders as links; fixes YouTube auto-dub captions being selected instead of the default audio language; and fixes YouTube transcripts using stale inline player data from another video when caption requests fail.
+
 # Changelog - v0.0.10
 
 ## Fixes

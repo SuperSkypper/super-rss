@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, Notice, setIcon } from 'obsidian';
+import { App, PluginSettingTab, Setting, Notice, setIcon, SettingDefinitionItem } from 'obsidian';
 import RssPlugin from './main';
 import { renderGeneralTab }        from './settings/settingsGeneral';
 import { renderGlobalTemplateTab } from './settings/settingsTemplate';
@@ -95,6 +95,17 @@ export class RssSettingTab extends PluginSettingTab {
                 renderOpmlTab(tabBody, this.app, this.plugin, cardStyle, refresh);
                 break;
         }
+    }
+
+    /**
+     * This tab is rendered imperatively by display() (custom tab bar, card
+     * layout, and modal-based editors that the declarative settings API cannot
+     * express). Returning an empty array keeps Obsidian using display() on every
+     * supported version — including 1.13+, where a non-empty array would replace
+     * the custom UI — while satisfying the declarative settings API check.
+     */
+    getSettingDefinitions(): SettingDefinitionItem[] {
+        return [];
     }
 
     display(): void {

@@ -267,7 +267,7 @@ export default class RssPlugin extends Plugin {
     private async handleMarkAsRead(params: Record<string, string>): Promise<void> {
         try {
             const { handleMarkAsRead } = await import('./settings/feedMarkAsRead');
-            await handleMarkAsRead(this.app, params);
+            await handleMarkAsRead(this.app, params, this.settings);
         } catch (e) {
             console.error('RSS: Failed to mark item as read', e);
             new Notice('RSS: failed to mark item as read.', 4000);

@@ -405,9 +405,8 @@ export async function fetchFullContent(url: string): Promise<FullContent | null>
         const doc    = parser.parseFromString(html, 'text/html');
 
         // Set the base URL so relative links resolve correctly
-        const base = doc.createElement('base');
+        const base = doc.head.createEl('base');
         base.href  = url;
-        doc.head.appendChild(base);
 
         const { default: Defuddle } = await import('defuddle/full');
         const result = new Defuddle(doc, { markdown: true, url }).parse();

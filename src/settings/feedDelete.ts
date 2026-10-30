@@ -7,6 +7,7 @@ import {
     AutoDatabase, 
     registerOldArticle 
 } from './feedDatabase';
+import { getMarkdownFilesInFolder } from '../utils/vaultFiles';
 
 export interface FileMeta {
     file: TFile;
@@ -197,9 +198,7 @@ export async function cleanupOldFiles(
         }
     } else {
         // Fallback for isolated calls
-        const files = vault.getFiles().filter(f =>
-            f.path.startsWith(normalizedFolder + '/') && f.extension === 'md'
-        );
+        const files = getMarkdownFilesInFolder(vault, normalizedFolder);
 
     for (const file of files) {
         let fileTime: number;
@@ -260,9 +259,7 @@ export async function deleteLiveArticlesForFeed(
     const { vault, metadataCache } = app;
     const normalizedFeedPath = normalizePath(feedPath);
 
-    const files = vault.getMarkdownFiles().filter(f => 
-        f.path.startsWith(normalizedFeedPath + '/')
-    );
+    const files = getMarkdownFilesInFolder(vault, normalizedFeedPath);
 
     let deletedCount = 0;
 
@@ -336,9 +333,7 @@ export async function deleteOrphanedDbArticles(
         }
     } else {
         // Fallback for isolated calls
-        const files = vault.getFiles().filter(f =>
-            f.path.startsWith(normalizedFolder + '/') && f.extension === 'md'
-        );
+        const files = getMarkdownFilesInFolder(vault, normalizedFolder);
 
     for (const file of files) {
         const itemLink = await resolveLinkFromFile(app, vault, file);
@@ -414,9 +409,7 @@ export async function cleanupReadFiles(
             }
         }
     } else {
-        const files = vault.getFiles().filter(f =>
-            f.path.startsWith(normalizedFolder + '/') && f.extension === 'md'
-        );
+        const files = getMarkdownFilesInFolder(vault, normalizedFolder);
 
         for (const file of files) {
             const isProtected = isFileProtected(app, file, propertyName);

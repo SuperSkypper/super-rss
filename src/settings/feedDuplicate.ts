@@ -2,6 +2,7 @@ import { App, normalizePath, TFile } from 'obsidian';
 import RssPlugin from '../main';
 import { FeedDatabase, loadAutoDatabase, loadUserDatabase, registerOldArticle } from './feedDatabase';
 import { FileMeta, discardVaultFile, readPubDateFromFrontmatter, resolveLinkFromFile } from './feedDelete';
+import { getMarkdownFilesInFolder } from '../utils/vaultFiles';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -77,9 +78,7 @@ export async function tagDuplicatesInVault(app: App, plugin: RssPlugin, fileCach
             linkToFiles.set(meta.link, group);
         }
     } else {
-        const files = vault.getMarkdownFiles().filter(f =>
-            f.path.startsWith(rssFolderPath + '/')
-        );
+        const files = getMarkdownFilesInFolder(vault, rssFolderPath);
 
         for (const file of files) {
             const link = await resolveLinkFromFile(app, vault, file);

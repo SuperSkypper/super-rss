@@ -103,9 +103,9 @@ export function renderGeneralTab(
 
     const setupText = setupHeader.createDiv({ cls: 'super-rss-setup-text' });
 
-    setupText.createEl('div', { text: 'Setup instructions', cls: 'super-rss-setup-title' });
+    setupText.createDiv({ text: 'Setup instructions', cls: 'super-rss-setup-title' });
 
-    const setupDesc = setupText.createEl('div', { cls: 'super-rss-setup-description' });
+    const setupDesc = setupText.createDiv({ cls: 'super-rss-setup-description' });
     setupDesc.setText('Configure the plugin below. Make sure to set your RSS folder and add feeds in the feeds tab.');
 
     // ── RSS Folder (No Storage H3) ────────────────────────────────────────────
